@@ -1,0 +1,4 @@
+/build
+/script/*.txt
+*.data
+.vscode
