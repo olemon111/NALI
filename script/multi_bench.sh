@@ -55,10 +55,10 @@ function Run() {
     # sleep 60
 }
 
-loadnum=6000000
-opnum=10000000
+loadnum=50000000
+opnum=50000000
 scansize=4000000
-dbname="alex"
+dbname="fastfair"
 for thread in 1
 do
     Run $dbname $loadnum $opnum $scansize $thread

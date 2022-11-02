@@ -122,27 +122,29 @@ int main(int argc, char *argv[]) {
     db = new nali::alexdb<size_t, size_t>();
   } else if (dbName == "fastfair") {
     db = new nali::fastfairdb<size_t, size_t>();
+  } else if (dbName == "nali") {
+    db = new nali::nalidb<size_t, size_t>();
   } else {
     LOG_ERROR("not defined db: %s", dbName.c_str());
     assert(false);
   }
    
-
-  if (dbName == "alex") {
-    int init_size = 10000000;
-    std::mt19937_64 gen_payload(std::random_device{}());
-    auto values = new std::pair<uint64_t, uint64_t>[init_size];
-    for (int i = 0; i < init_size; i++) {
-      // values[i].first = data_base[data_base.size() - i - 1];
-      values[i].first = data_base[i];
-      values[i].second = static_cast<uint64_t>(gen_payload());
-    }
-    std::sort(values, values + init_size,
-              [](auto const& a, auto const& b) { return a.first < b.first; });
-    LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
-    db->bulk_load(values, init_size);
-    LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
-  }
+  // 目前alex好像修好了这个bug，不必须bulkload了
+  // if (dbName == "alex") {
+  //   int init_size = 10000000;
+  //   std::mt19937_64 gen_payload(std::random_device{}());
+  //   auto values = new std::pair<uint64_t, uint64_t>[init_size];
+  //   for (int i = 0; i < init_size; i++) {
+  //     // values[i].first = data_base[data_base.size() - i - 1];
+  //     values[i].first = data_base[i];
+  //     values[i].second = static_cast<uint64_t>(gen_payload());
+  //   }
+  //   std::sort(values, values + init_size,
+  //             [](auto const& a, auto const& b) { return a.first < b.first; });
+  //   LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
+  //   db->bulk_load(values, init_size);
+  //   LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
+  // }
 
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
@@ -244,11 +246,108 @@ int main(int argc, char *argv[]) {
               << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
   }
 
-  // range
+  util::FastRandom ranny(18);
 
-  // mix
+  // // db->Info();
+  // // us_times = timer.Microsecond("stop", "start");
+  // // timer.Record("start");
+  // // Different insert_ration
+  // std::vector<float> insert_ratios = {1};
+  // // std::vector<float> insert_ratios = {0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
+  // float insert_ratio = 0;
+  
+  // std::cout << "Start testing ...." << std::endl;
+  // intel_pin_start();
+  // for (int i = 0; i < insert_ratios.size(); i++)
+  // {
+  //   int wrong_get = 0;
+  //   uint64_t value = 0;
+  //   insert_ratio = insert_ratios[i];
+  //   db->Begin_trans();
+  //   std::cout << "Data loaded: " << load_pos << std::endl;
+  //   vector<uint64_t> rand_pos;
+  //   for(uint64_t i = 0;i<GET_SIZE;i++){
+  //       rand_pos.push_back(ranny.RandUint32(0, load_pos - 1));
+  //   }
+  //   timer.Clear();
+  //   timer.Record("start");
+  //   for (uint64_t i = 0; i < GET_SIZE; i++)
+  //   {
+  //     if (ranny.ScaleFactor() < insert_ratio)
+  //     {
+  //       db->Put(data_base[load_pos], (uint64_t)data_base[load_pos]);
+  //       load_pos++;
+  //     }
+  //     else
+  //     {
+  //       // uint64_t op_seq = ranny.RandUint32(0, load_pos - 1);
+  //       db->Get(data_base[rand_pos[i]], value);
+  //       if(value != data_base[rand_pos[i]]){
+  //         wrong_get++;
+  //       }
+  //     }
+  //   }
+  //   std::cout << "wrong get: " << wrong_get << std::endl;
+  //   timer.Record("stop");
+  //   us_times = timer.Microsecond("stop", "start");
+  //   std::cout << "[Metic-Operate]: Operate " << GET_SIZE << " insert_ratio " << insert_ratio << ": "
+  //             << "cost " << us_times / 1000000.0 << "s, "
+  //             << "iops " << (double)(GET_SIZE) / (double)us_times * 1000000.0 << " ." << std::endl;
+  // }
+  // intel_pin_stop();
 
-  // delete
+  // unit 测试
+  if (thread_num == 1) {
+    // scan
+    {
+      LOG_INFO(" @@@@@@@@@@@@@ single thread scan @@@@@@@@@@@@@@@");
+      uint64_t total_scan_size = 400000000;
+      std::vector<int> scan_size = {100};
+      for (auto scan : scan_size)
+      {
+        auto ts = TIME_NOW;
+        uint64_t scan_times = total_scan_size / scan;
+        std::pair<uint64_t, uint64_t> *results = new std::pair<uint64_t, uint64_t>[scan];
+        for (int i = 0; i < scan_times; ++i)
+        {
+          if(i%1000000 == 0){
+            std::cerr << "scan times: " << scan_times << '\r';  
+          }
+          uint64_t op_seq = ranny.RandUint32(0, LOAD_SIZE + PUT_SIZE);
+          
+          db->range_scan_by_size(data_base[op_seq], scan, results);
+        }
+
+        auto te = TIME_NOW;
+        auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+        std::cout << "[Scan]: Scan " << scan << " " << scan_times <<" times: "
+                  << "cost " << use_seconds << "s, "
+                  << "iops " << (double)(scan_times) / use_seconds << " ." << std::endl;
+        delete [] results;
+      }
+    }
+      
+
+    // delete
+    {
+      LOG_INFO(" @@@@@@@@@@@@@ single thread delete @@@@@@@@@@@@@@@");
+      uint64_t DELETE_SIZE = 10000000;
+      auto ts = TIME_NOW;
+      for (int i = 0; i < DELETE_SIZE; ++i)
+      {
+        if(i%1000000 == 0){
+          std::cerr << "delete times: " << i << '\r'; 
+        }
+        uint64_t op_seq = ranny.RandUint32(0, LOAD_SIZE + PUT_SIZE);
+        db->erase(data_base[i]);
+      }
+      auto te = TIME_NOW;
+      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+      std::cout << "[Delete]: Delete " << DELETE_SIZE << ": "
+                << "cost " << use_seconds << "s, "
+                << "iops " << (double)(DELETE_SIZE) / use_seconds << " ." << std::endl;
+    }
+  }
 
   delete db;
 

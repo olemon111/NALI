@@ -10,5 +10,5 @@ else
     cd build;
     cmake -DCMAKE_BUILD_TYPE=Release ..;
 fi
-make -j 16;
+make -j 8;
 cd ..;
