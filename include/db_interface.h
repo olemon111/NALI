@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tree.h"
+#include "util/utils.h"
 #include "../src/nali.h"
 #include "../third/ALEX/alex.h"
 #include "../third/FAST_FAIR/btree.h"
@@ -23,54 +24,55 @@ namespace nali {
             }
 
             bool insert(const T& key, const P& payload, bool epoch = false) {
-                return (db_->insert(key, payload)).second;
+                // rwlock.lock();
+                bool ret = db_->insert(key, payload);
+                // rwlock.unlock();
+                return ret;
             }
 
-            bool search(const T& key, P* payload, bool epoch = false) const {
-                auto it = db_->find(key);
-                if (it == db_->end())
-                    return false;
-                else {
-                    *payload = it.payload();
-                    return true;
-                }
+            bool search(const T& key, P* payload, bool epoch = false) {
+                // rwlock.lock();
+                bool ret = db_->find(key, payload);
+                // rwlock.unlock();
+                return ret;
             }
 
-            bool erase(const T& key, bool epoch = false){
+            bool erase(const T& key, bool epoch = false) {
+                // rwlock.lock();
                 int num_erased = db_->erase(key);
+                // rwlock.unlock();
                 if (0 == num_erased)
                     return false; // not exist
                 return true;
             }
 
-            bool update(const T& key, const P& payload, bool epoch = false){
-                auto it = db_->find(key);
-                if (it == db_->end())
-                    return false; // not exist
-                it.payload() = payload;
-                return true;
+            bool update(const T& key, const P& payload, bool epoch = false) {
+                return db_->update(key, payload);
             }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false){
-                auto it = db_->find(key);
-                if (it == db_->end())
-                    return 0;
-                if (result == nullptr) {
-                    result = new V[to_scan];
-                }
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
+                // auto it = db_->find(key);
+                // if (it == db_->end())
+                //     return 0;
+                // if (result == nullptr) {
+                //     result = new V[to_scan];
+                // }
 
-                uint32_t i = 0;
-                for (i = 0; i < to_scan && it != db_->end(); i++) {
-                    result[i] = *it;
-                    it++;
-                }
-                return i;
+                // uint32_t i = 0;
+                // for (i = 0; i < to_scan && it != db_->end(); i++) {
+                //     result[i] = *it;
+                //     it++;
+                // }
+                // return i;
+                // todo: 不使用迭代器，nali内部实现
+                return true;
             }
 
             void get_depth_info() {}
 
         private:
             nali::Nali<T, P> *db_;
+            shared_mutex_u8 rwlock;
     };
 
     template <class T, class P>
@@ -93,7 +95,7 @@ namespace nali {
                 return (db_->insert(key, payload)).second;
             }
 
-            bool search(const T& key, P* payload, bool epoch = false) const {
+            bool search(const T& key, P* payload, bool epoch = false) {
                 auto it = db_->find(key);
                 if (it == db_->end())
                     return false;
@@ -103,14 +105,14 @@ namespace nali {
                 }
             }
 
-            bool erase(const T& key, bool epoch = false){
+            bool erase(const T& key, bool epoch = false) {
                 int num_erased = db_->erase(key);
                 if (0 == num_erased)
                     return false; // not exist
                 return true;
             }
 
-            bool update(const T& key, const P& payload, bool epoch = false){
+            bool update(const T& key, const P& payload, bool epoch = false) {
                 auto it = db_->find(key);
                 if (it == db_->end())
                     return false; // not exist
@@ -118,7 +120,7 @@ namespace nali {
                 return true;
             }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false){
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
                 auto it = db_->find(key);
                 if (it == db_->end())
                     return 0;
@@ -169,7 +171,7 @@ namespace nali {
                 return true;
             }
 
-            bool search(const T& key, P* payload, bool epoch = false) const {
+            bool search(const T& key, P* payload, bool epoch = false) {
                 *payload = (P)db_->btree_search(key);
                 return true;
             }
@@ -179,13 +181,13 @@ namespace nali {
                 return true;
             }
 
-            bool update(const T& key, const P& payload, bool epoch = false){
+            bool update(const T& key, const P& payload, bool epoch = false) {
                 db_->btree_delete(key);
                 db_->btree_insert(key, (char *)payload);
                 return true;
             }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false){
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
                 std::vector<std::pair<fastfair::entry_key_t, uint64_t>> res;
                 int scan = to_scan;
                 db_->btree_search_range(key, UINT64_MAX, res, scan);

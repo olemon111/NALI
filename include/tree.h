@@ -14,7 +14,7 @@ class Tree {
   typedef std::pair<T, P> V;
   virtual void bulk_load(const V[], int) = 0;
   virtual bool insert(const T&, const P&, bool epoch = false) = 0;
-  virtual bool search(const T&, P*, bool epoch = false) const = 0;
+  virtual bool search(const T&, P*, bool epoch = false) = 0;
   virtual bool erase(const T&, bool epoch = false) = 0;
   virtual bool update(const T&, const P&, bool epoch = false) = 0;
   // Return #keys really scanned

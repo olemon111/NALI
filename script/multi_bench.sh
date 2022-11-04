@@ -16,7 +16,7 @@ function Run() {
         --loadstype 3 --load-size ${loadnum} --put-size ${opnum} --get-size ${opnum} \
         -t $thread | tee -a multi-${dbname}-${Loadname}-th${thread}.txt
     echo "----------------"
-    sleep 60
+    # sleep 60
 
     # rm -rf /mnt/pmem0/*
     # rm -rf /mnt/pmem1/*
@@ -55,10 +55,10 @@ function Run() {
     # sleep 60
 }
 
-loadnum=50000000
-opnum=50000000
+loadnum=70000000
+opnum=30000000
 scansize=4000000
-dbname="fastfair"
+dbname="nali"
 for thread in 1
 do
     Run $dbname $loadnum $opnum $scansize $thread

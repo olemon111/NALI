@@ -66,10 +66,6 @@ class Nali {
   typedef NaliDataNode<T, P, Compare, Alloc, allow_duplicates> data_node_type;
 
   // Forward declaration for iterators
-  class Iterator;
-  class ConstIterator;
-  class ReverseIterator;
-  class ConstReverseIterator;
   class NodeIterator;  // Iterates through all nodes with pre-order traversal
 
   NaliNode<T, P>* root_node_ = nullptr;
@@ -246,112 +242,6 @@ class Nali {
       delete_node(node_it.current());
     }
     delete_node(superroot_);
-  }
-
-  // Initializes with range [first, last). The range does not need to be
-  // sorted. This creates a temporary copy of the data. If possible, we
-  // recommend directly using bulk_load() instead.
-  template <class InputIterator>
-  explicit Nali(InputIterator first, InputIterator last, const Compare& comp,
-                const Alloc& alloc = Alloc())
-      : key_less_(comp), allocator_(alloc) {
-    std::vector<V> values;
-    for (auto it = first; it != last; ++it) {
-      values.push_back(*it);
-    }
-    std::sort(values.begin(), values.end(),
-              [this](auto const& a, auto const& b) {
-                return key_less_(a.first, b.first);
-              });
-    bulk_load(values.data(), static_cast<int>(values.size()));
-  }
-
-  // Initializes with range [first, last). The range does not need to be
-  // sorted. This creates a temporary copy of the data. If possible, we
-  // recommend directly using bulk_load() instead.
-  template <class InputIterator>
-  explicit Nali(InputIterator first, InputIterator last,
-                const Alloc& alloc = Alloc())
-      : allocator_(alloc) {
-    std::vector<V> values;
-    for (auto it = first; it != last; ++it) {
-      values.push_back(*it);
-    }
-    std::sort(values.begin(), values.end(),
-              [this](auto const& a, auto const& b) {
-                return key_less_(a.first, b.first);
-              });
-    bulk_load(values.data(), static_cast<int>(values.size()));
-  }
-
-  explicit Nali(const self_type& other)
-      : params_(other.params_),
-        derived_params_(other.derived_params_),
-        stats_(other.stats_),
-        experimental_params_(other.experimental_params_),
-        istats_(other.istats_),
-        key_less_(other.key_less_),
-        allocator_(other.allocator_) {
-    superroot_ =
-        static_cast<model_node_type*>(copy_tree_recursive(other.superroot_));
-    root_node_ = superroot_->children_[0];
-  }
-
-  Nali& operator=(const self_type& other) {
-    if (this != &other) {
-      for (NodeIterator node_it = NodeIterator(this); !node_it.is_end();
-           node_it.next()) {
-        delete_node(node_it.current());
-      }
-      delete_node(superroot_);
-      params_ = other.params_;
-      derived_params_ = other.derived_params_;
-      experimental_params_ = other.experimental_params_;
-      istats_ = other.istats_;
-      stats_ = other.stats_;
-      key_less_ = other.key_less_;
-      allocator_ = other.allocator_;
-      superroot_ =
-          static_cast<model_node_type*>(copy_tree_recursive(other.superroot_));
-      root_node_ = superroot_->children_[0];
-    }
-    return *this;
-  }
-
-  void swap(const self_type& other) {
-    std::swap(params_, other.params_);
-    std::swap(derived_params_, other.derived_params_);
-    std::swap(experimental_params_, other.experimental_params_);
-    std::swap(istats_, other.istats_);
-    std::swap(stats_, other.stats_);
-    std::swap(key_less_, other.key_less_);
-    std::swap(allocator_, other.allocator_);
-    std::swap(superroot_, other.superroot_);
-    std::swap(root_node_, other.root_node_);
-  }
-
- private:
-  // Deep copy of tree starting at given node
-  NaliNode<T, P>* copy_tree_recursive(const NaliNode<T, P>* node) {
-    if (!node) return nullptr;
-    if (node->is_leaf_) {
-      return new (data_node_allocator().allocate(1))
-          data_node_type(*static_cast<const data_node_type*>(node));
-    } else {
-      auto node_copy = new (model_node_allocator().allocate(1))
-          model_node_type(*static_cast<const model_node_type*>(node));
-      int cur = 0;
-      while (cur < node_copy->num_children_) {
-        NaliNode<T, P>* child_node = node_copy->children_[cur];
-        NaliNode<T, P>* child_node_copy = copy_tree_recursive(child_node);
-        int repeats = 1 << child_node_copy->duplication_factor_;
-        for (int i = cur; i < cur + repeats; i++) {
-          node_copy->children_[i] = child_node_copy;
-        }
-        cur += repeats;
-      }
-      return node_copy;
-    }
   }
 
  public:
@@ -897,85 +787,28 @@ class Nali {
   /*** Lookup ***/
 
  public:
-  // Looks for an exact match of the key
-  // If the key does not exist, returns an end iterator
-  // If there are multiple keys with the same value, returns an iterator to the
-  // right-most key
-  // If you instead want an iterator to the left-most key with the input value,
-  // use lower_bound()
-  typename self_type::Iterator find(const T& key) {
+  bool find(const T& key, P *value) const {
     stats_.num_lookups++;
     data_node_type* leaf = get_leaf(key);
     int idx = leaf->find_key(key);
     if (idx < 0) {
-      return end();
+      return false;
     } else {
-      return Iterator(leaf, idx);
+      *value = leaf->get_payload(idx);
+      return true;
     }
   }
 
-  typename self_type::ConstIterator find(const T& key) const {
+  bool update(const T& key, const P& payload) {
     stats_.num_lookups++;
     data_node_type* leaf = get_leaf(key);
     int idx = leaf->find_key(key);
     if (idx < 0) {
-      return cend();
+      return false;
     } else {
-      return ConstIterator(leaf, idx);
+      leaf->get_payload(idx) = payload;
+      return true;
     }
-  }
-
-  size_t count(const T& key) {
-    ConstIterator it = lower_bound(key);
-    size_t num_equal = 0;
-    while (!it.is_end() && key_equal(it.key(), key)) {
-      num_equal++;
-      ++it;
-    }
-    return num_equal;
-  }
-
-  // Returns an iterator to the first key no less than the input value
-  typename self_type::Iterator lower_bound(const T& key) {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    int idx = leaf->find_lower(key);
-    return Iterator(leaf, idx);  // automatically handles the case where idx ==
-                                 // leaf->data_capacity
-  }
-
-  typename self_type::ConstIterator lower_bound(const T& key) const {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    int idx = leaf->find_lower(key);
-    return ConstIterator(leaf, idx);  // automatically handles the case where
-                                      // idx == leaf->data_capacity
-  }
-
-  // Returns an iterator to the first key greater than the input value
-  typename self_type::Iterator upper_bound(const T& key) {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    int idx = leaf->find_upper(key);
-    return Iterator(leaf, idx);  // automatically handles the case where idx ==
-                                 // leaf->data_capacity
-  }
-
-  typename self_type::ConstIterator upper_bound(const T& key) const {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    int idx = leaf->find_upper(key);
-    return ConstIterator(leaf, idx);  // automatically handles the case where
-                                      // idx == leaf->data_capacity
-  }
-
-  std::pair<Iterator, Iterator> equal_range(const T& key) {
-    return std::pair<Iterator, Iterator>(lower_bound(key), upper_bound(key));
-  }
-
-  std::pair<ConstIterator, ConstIterator> equal_range(const T& key) const {
-    return std::pair<ConstIterator, ConstIterator>(lower_bound(key),
-                                                   upper_bound(key));
   }
 
   // Directly returns a pointer to the payload found through find(key)
@@ -992,131 +825,11 @@ class Nali {
     }
   }
 
-  // Looks for the last key no greater than the input value
-  // Conceptually, this is equal to the last key before upper_bound()
-  typename self_type::Iterator find_last_no_greater_than(const T& key) {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    const int idx = leaf->upper_bound(key) - 1;
-    if (idx >= 0) {
-      return Iterator(leaf, idx);
-    }
-
-    // Edge case: need to check previous data node(s)
-    while (true) {
-      if (leaf->prev_leaf_ == nullptr) {
-        return Iterator(leaf, 0);
-      }
-      leaf = leaf->prev_leaf_;
-      if (leaf->num_keys_ > 0) {
-        return Iterator(leaf, leaf->last_pos());
-      }
-    }
-  }
-
-  // Directly returns a pointer to the payload found through
-  // find_last_no_greater_than(key)
-  // This avoids the overhead of creating an iterator
-  P* get_payload_last_no_greater_than(const T& key) {
-    stats_.num_lookups++;
-    data_node_type* leaf = get_leaf(key);
-    const int idx = leaf->upper_bound(key) - 1;
-    if (idx >= 0) {
-      return &(leaf->get_payload(idx));
-    }
-
-    // Edge case: Need to check previous data node(s)
-    while (true) {
-      if (leaf->prev_leaf_ == nullptr) {
-        return &(leaf->get_payload(leaf->first_pos()));
-      }
-      leaf = leaf->prev_leaf_;
-      if (leaf->num_keys_ > 0) {
-        return &(leaf->get_payload(leaf->last_pos()));
-      }
-    }
-  }
-
-  typename self_type::Iterator begin() {
-    NaliNode<T, P>* cur = root_node_;
-
-    while (!cur->is_leaf_) {
-      cur = static_cast<model_node_type*>(cur)->children_[0];
-    }
-    return Iterator(static_cast<data_node_type*>(cur), 0);
-  }
-
-  typename self_type::Iterator end() {
-    Iterator it = Iterator();
-    it.cur_leaf_ = nullptr;
-    it.cur_idx_ = 0;
-    return it;
-  }
-
-  typename self_type::ConstIterator cbegin() const {
-    NaliNode<T, P>* cur = root_node_;
-
-    while (!cur->is_leaf_) {
-      cur = static_cast<model_node_type*>(cur)->children_[0];
-    }
-    return ConstIterator(static_cast<data_node_type*>(cur), 0);
-  }
-
-  typename self_type::ConstIterator cend() const {
-    ConstIterator it = ConstIterator();
-    it.cur_leaf_ = nullptr;
-    it.cur_idx_ = 0;
-    return it;
-  }
-
-  typename self_type::ReverseIterator rbegin() {
-    NaliNode<T, P>* cur = root_node_;
-
-    while (!cur->is_leaf_) {
-      auto model_node = static_cast<model_node_type*>(cur);
-      cur = model_node->children_[model_node->num_children_ - 1];
-    }
-    auto data_node = static_cast<data_node_type*>(cur);
-    return ReverseIterator(data_node, data_node->data_capacity_ - 1);
-  }
-
-  typename self_type::ReverseIterator rend() {
-    ReverseIterator it = ReverseIterator();
-    it.cur_leaf_ = nullptr;
-    it.cur_idx_ = 0;
-    return it;
-  }
-
-  typename self_type::ConstReverseIterator crbegin() const {
-    NaliNode<T, P>* cur = root_node_;
-
-    while (!cur->is_leaf_) {
-      auto model_node = static_cast<model_node_type*>(cur);
-      cur = model_node->children_[model_node->num_children_ - 1];
-    }
-    auto data_node = static_cast<data_node_type*>(cur);
-    return ConstReverseIterator(data_node, data_node->data_capacity_ - 1);
-  }
-
-  typename self_type::ConstReverseIterator crend() const {
-    ConstReverseIterator it = ConstReverseIterator();
-    it.cur_leaf_ = nullptr;
-    it.cur_idx_ = 0;
-    return it;
-  }
-
   /*** Insert ***/
 
  public:
-  std::pair<Iterator, bool> insert(const V& value) {
+  bool insert(const V& value) {
     return insert(value.first, value.second);
-  }
-
-  template <class InputIterator>
-  void insert(InputIterator first, InputIterator last) {
-    for (auto it = first; it != last; ++it) {
-      insert(*it);
-    }
   }
 
   // This will NOT do an update of an existing key.
@@ -1126,7 +839,7 @@ class Nali {
   // not.
   // Insert does not happen if duplicates are not allowed and duplicate is
   // found.
-  std::pair<Iterator, bool> insert(const T& key, const P& payload) {
+  bool insert(const T& key, const P& payload) {
     // If enough keys fall outside the key domain, expand the root to expand the
     // key domain
     if (key > istats_.key_domain_max_) {
@@ -1149,7 +862,7 @@ class Nali {
     int insert_pos = ret.second;
     if (fail == -1) {
       // Duplicate found and duplicates not allowed
-      return {Iterator(leaf, insert_pos), false};
+      return false;
     }
 
     // If no insert, figure out what to do with the data node to decrease the
@@ -1247,13 +960,13 @@ class Nali {
         insert_pos = ret.second;
         if (fail == -1) {
           // Duplicate found and duplicates not allowed
-          return {Iterator(leaf, insert_pos), false};
+          return false;
         }
       }
     }
     stats_.num_inserts++;
     stats_.num_keys++;
-    return {Iterator(leaf, insert_pos), true};
+    return true;
   }
 
  private:
@@ -2183,24 +1896,6 @@ class Nali {
     return num_erased;
   }
 
-  // Erases element pointed to by iterator
-  void erase(Iterator it) {
-    if (it.is_end()) {
-      return;
-    }
-    T key = it.key();
-    it.cur_leaf_->erase_one_at(it.cur_idx_);
-    stats_.num_keys--;
-    if (it.cur_leaf_->num_keys_ == 0) {
-      merge(it.cur_leaf_, key);
-    }
-    if (key > istats_.key_domain_max_) {
-      istats_.num_keys_above_key_domain--;
-    } else if (key < istats_.key_domain_min_) {
-      istats_.num_keys_below_key_domain--;
-    }
-  }
-
   // Removes all elements
   void clear() {
     for (NodeIterator node_it = NodeIterator(this); !node_it.is_end();
@@ -2476,478 +2171,6 @@ class Nali {
   /*** Iterators ***/
 
  public:
-  class Iterator {
-   public:
-    data_node_type* cur_leaf_ = nullptr;  // current data node
-    int cur_idx_ = 0;         // current position in key/data_slots of data node
-    int cur_bitmap_idx_ = 0;  // current position in bitmap
-    uint64_t cur_bitmap_data_ = 0;  // caches the relevant data in the current
-                                    // bitmap position
-
-    Iterator() {}
-
-    Iterator(data_node_type* leaf, int idx) : cur_leaf_(leaf), cur_idx_(idx) {
-      initialize();
-    }
-
-    Iterator(const Iterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    Iterator(const ReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    Iterator& operator=(const Iterator& other) {
-      if (this != &other) {
-        cur_idx_ = other.cur_idx_;
-        cur_leaf_ = other.cur_leaf_;
-        cur_bitmap_idx_ = other.cur_bitmap_idx_;
-        cur_bitmap_data_ = other.cur_bitmap_data_;
-      }
-      return *this;
-    }
-
-    Iterator& operator++() {
-      advance();
-      return *this;
-    }
-
-    Iterator operator++(int) {
-      Iterator tmp = *this;
-      advance();
-      return tmp;
-    }
-
-#if Nali_DATA_NODE_SEP_ARRAYS
-    // Does not return a reference because keys and payloads are stored
-    // separately.
-    // If possible, use key() and payload() instead.
-    V operator*() const {
-      return std::make_pair(cur_leaf_->key_slots_[cur_idx_],
-                            cur_leaf_->payload_slots_[cur_idx_]);
-    }
-#else
-    // If data node stores key-payload pairs contiguously, return reference to V
-    V& operator*() const { return cur_leaf_->data_slots_[cur_idx_]; }
-#endif
-
-    const T& key() const { return cur_leaf_->get_key(cur_idx_); }
-
-    P& payload() const { return cur_leaf_->get_payload(cur_idx_); }
-
-    bool is_end() const { return cur_leaf_ == nullptr; }
-
-    bool operator==(const Iterator& rhs) const {
-      return cur_idx_ == rhs.cur_idx_ && cur_leaf_ == rhs.cur_leaf_;
-    }
-
-    bool operator!=(const Iterator& rhs) const { return !(*this == rhs); };
-
-   private:
-    void initialize() {
-      if (!cur_leaf_) return;
-      assert(cur_idx_ >= 0);
-      if (cur_idx_ >= cur_leaf_->data_capacity_) {
-        cur_leaf_ = cur_leaf_->next_leaf_;
-        cur_idx_ = 0;
-        if (!cur_leaf_) return;
-      }
-
-      cur_bitmap_idx_ = cur_idx_ >> 6;
-      cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-
-      // Zero out extra bits
-      int bit_pos = cur_idx_ - (cur_bitmap_idx_ << 6);
-      cur_bitmap_data_ &= ~((1ULL << bit_pos) - 1);
-
-      (*this)++;
-    }
-
-    forceinline void advance() {
-      while (cur_bitmap_data_ == 0) {
-        cur_bitmap_idx_++;
-        if (cur_bitmap_idx_ >= cur_leaf_->bitmap_size_) {
-          cur_leaf_ = cur_leaf_->next_leaf_;
-          cur_idx_ = 0;
-          if (cur_leaf_ == nullptr) {
-            return;
-          }
-          cur_bitmap_idx_ = 0;
-        }
-        cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-      }
-      uint64_t bit = extract_rightmost_one(cur_bitmap_data_);
-      cur_idx_ = get_offset(cur_bitmap_idx_, bit);
-      cur_bitmap_data_ = remove_rightmost_one(cur_bitmap_data_);
-    }
-  };
-
-  class ConstIterator {
-   public:
-    const data_node_type* cur_leaf_ = nullptr;  // current data node
-    int cur_idx_ = 0;         // current position in key/data_slots of data node
-    int cur_bitmap_idx_ = 0;  // current position in bitmap
-    uint64_t cur_bitmap_data_ = 0;  // caches the relevant data in the current
-                                    // bitmap position
-
-    ConstIterator() {}
-
-    ConstIterator(const data_node_type* leaf, int idx)
-        : cur_leaf_(leaf), cur_idx_(idx) {
-      initialize();
-    }
-
-    ConstIterator(const Iterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    ConstIterator(const ConstIterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    ConstIterator(const ReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    ConstIterator(const ConstReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    ConstIterator& operator=(const ConstIterator& other) {
-      if (this != &other) {
-        cur_idx_ = other.cur_idx_;
-        cur_leaf_ = other.cur_leaf_;
-        cur_bitmap_idx_ = other.cur_bitmap_idx_;
-        cur_bitmap_data_ = other.cur_bitmap_data_;
-      }
-      return *this;
-    }
-
-    ConstIterator& operator++() {
-      advance();
-      return *this;
-    }
-
-    ConstIterator operator++(int) {
-      ConstIterator tmp = *this;
-      advance();
-      return tmp;
-    }
-
-#if Nali_DATA_NODE_SEP_ARRAYS
-    // Does not return a reference because keys and payloads are stored
-    // separately.
-    // If possible, use key() and payload() instead.
-    V operator*() const {
-      return std::make_pair(cur_leaf_->key_slots_[cur_idx_],
-                            cur_leaf_->payload_slots_[cur_idx_]);
-    }
-#else
-    // If data node stores key-payload pairs contiguously, return reference to V
-    const V& operator*() const { return cur_leaf_->data_slots_[cur_idx_]; }
-#endif
-
-    const T& key() const { return cur_leaf_->get_key(cur_idx_); }
-
-    const P& payload() const { return cur_leaf_->get_payload(cur_idx_); }
-
-    bool is_end() const { return cur_leaf_ == nullptr; }
-
-    bool operator==(const ConstIterator& rhs) const {
-      return cur_idx_ == rhs.cur_idx_ && cur_leaf_ == rhs.cur_leaf_;
-    }
-
-    bool operator!=(const ConstIterator& rhs) const { return !(*this == rhs); };
-
-   private:
-    void initialize() {
-      if (!cur_leaf_) return;
-      assert(cur_idx_ >= 0);
-      if (cur_idx_ >= cur_leaf_->data_capacity_) {
-        cur_leaf_ = cur_leaf_->next_leaf_;
-        cur_idx_ = 0;
-        if (!cur_leaf_) return;
-      }
-
-      cur_bitmap_idx_ = cur_idx_ >> 6;
-      cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-
-      // Zero out extra bits
-      int bit_pos = cur_idx_ - (cur_bitmap_idx_ << 6);
-      cur_bitmap_data_ &= ~((1ULL << bit_pos) - 1);
-
-      (*this)++;
-    }
-
-    forceinline void advance() {
-      while (cur_bitmap_data_ == 0) {
-        cur_bitmap_idx_++;
-        if (cur_bitmap_idx_ >= cur_leaf_->bitmap_size_) {
-          cur_leaf_ = cur_leaf_->next_leaf_;
-          cur_idx_ = 0;
-          if (cur_leaf_ == nullptr) {
-            return;
-          }
-          cur_bitmap_idx_ = 0;
-        }
-        cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-      }
-      uint64_t bit = extract_rightmost_one(cur_bitmap_data_);
-      cur_idx_ = get_offset(cur_bitmap_idx_, bit);
-      cur_bitmap_data_ = remove_rightmost_one(cur_bitmap_data_);
-    }
-  };
-
-  class ReverseIterator {
-   public:
-    data_node_type* cur_leaf_ = nullptr;  // current data node
-    int cur_idx_ = 0;         // current position in key/data_slots of data node
-    int cur_bitmap_idx_ = 0;  // current position in bitmap
-    uint64_t cur_bitmap_data_ = 0;  // caches the relevant data in the current
-                                    // bitmap position
-
-    ReverseIterator() {}
-
-    ReverseIterator(data_node_type* leaf, int idx)
-        : cur_leaf_(leaf), cur_idx_(idx) {
-      initialize();
-    }
-
-    ReverseIterator(const ReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    ReverseIterator(const Iterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    ReverseIterator& operator=(const ReverseIterator& other) {
-      if (this != &other) {
-        cur_idx_ = other.cur_idx_;
-        cur_leaf_ = other.cur_leaf_;
-        cur_bitmap_idx_ = other.cur_bitmap_idx_;
-        cur_bitmap_data_ = other.cur_bitmap_data_;
-      }
-      return *this;
-    }
-
-    ReverseIterator& operator++() {
-      advance();
-      return *this;
-    }
-
-    ReverseIterator operator++(int) {
-      ReverseIterator tmp = *this;
-      advance();
-      return tmp;
-    }
-
-#if Nali_DATA_NODE_SEP_ARRAYS
-    // Does not return a reference because keys and payloads are stored
-    // separately.
-    // If possible, use key() and payload() instead.
-    V operator*() const {
-      return std::make_pair(cur_leaf_->key_slots_[cur_idx_],
-                            cur_leaf_->payload_slots_[cur_idx_]);
-    }
-#else
-    // If data node stores key-payload pairs contiguously, return reference to V
-    V& operator*() const { return cur_leaf_->data_slots_[cur_idx_]; }
-#endif
-
-    const T& key() const { return cur_leaf_->get_key(cur_idx_); }
-
-    P& payload() const { return cur_leaf_->get_payload(cur_idx_); }
-
-    bool is_end() const { return cur_leaf_ == nullptr; }
-
-    bool operator==(const ReverseIterator& rhs) const {
-      return cur_idx_ == rhs.cur_idx_ && cur_leaf_ == rhs.cur_leaf_;
-    }
-
-    bool operator!=(const ReverseIterator& rhs) const {
-      return !(*this == rhs);
-    };
-
-   private:
-    void initialize() {
-      if (!cur_leaf_) return;
-      assert(cur_idx_ >= 0);
-      if (cur_idx_ >= cur_leaf_->data_capacity_) {
-        cur_leaf_ = cur_leaf_->next_leaf_;
-        cur_idx_ = 0;
-        if (!cur_leaf_) return;
-      }
-
-      cur_bitmap_idx_ = cur_idx_ >> 6;
-      cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-
-      // Zero out extra bits
-      int bit_pos = cur_idx_ - (cur_bitmap_idx_ << 6);
-      cur_bitmap_data_ &= (1ULL << bit_pos) | ((1ULL << bit_pos) - 1);
-
-      advance();
-    }
-
-    forceinline void advance() {
-      while (cur_bitmap_data_ == 0) {
-        cur_bitmap_idx_--;
-        if (cur_bitmap_idx_ < 0) {
-          cur_leaf_ = cur_leaf_->prev_leaf_;
-          if (cur_leaf_ == nullptr) {
-            cur_idx_ = 0;
-            return;
-          }
-          cur_idx_ = cur_leaf_->data_capacity_ - 1;
-          cur_bitmap_idx_ = cur_leaf_->bitmap_size_ - 1;
-        }
-        cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-      }
-      assert(cpu_supports_bmi());
-      int bit_pos = static_cast<int>(63 - _lzcnt_u64(cur_bitmap_data_));
-      cur_idx_ = (cur_bitmap_idx_ << 6) + bit_pos;
-      cur_bitmap_data_ &= ~(1ULL << bit_pos);
-    }
-  };
-
-  class ConstReverseIterator {
-   public:
-    const data_node_type* cur_leaf_ = nullptr;  // current data node
-    int cur_idx_ = 0;         // current position in key/data_slots of data node
-    int cur_bitmap_idx_ = 0;  // current position in bitmap
-    uint64_t cur_bitmap_data_ = 0;  // caches the relevant data in the current
-                                    // bitmap position
-
-    ConstReverseIterator() {}
-
-    ConstReverseIterator(const data_node_type* leaf, int idx)
-        : cur_leaf_(leaf), cur_idx_(idx) {
-      initialize();
-    }
-
-    ConstReverseIterator(const ConstReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    ConstReverseIterator(const ReverseIterator& other)
-        : cur_leaf_(other.cur_leaf_),
-          cur_idx_(other.cur_idx_),
-          cur_bitmap_idx_(other.cur_bitmap_idx_),
-          cur_bitmap_data_(other.cur_bitmap_data_) {}
-
-    ConstReverseIterator(const Iterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    ConstReverseIterator(const ConstIterator& other)
-        : cur_leaf_(other.cur_leaf_), cur_idx_(other.cur_idx_) {
-      initialize();
-    }
-
-    ConstReverseIterator& operator=(const ConstReverseIterator& other) {
-      if (this != &other) {
-        cur_idx_ = other.cur_idx_;
-        cur_leaf_ = other.cur_leaf_;
-        cur_bitmap_idx_ = other.cur_bitmap_idx_;
-        cur_bitmap_data_ = other.cur_bitmap_data_;
-      }
-      return *this;
-    }
-
-    ConstReverseIterator& operator++() {
-      advance();
-      return *this;
-    }
-
-    ConstReverseIterator operator++(int) {
-      ConstReverseIterator tmp = *this;
-      advance();
-      return tmp;
-    }
-
-#if Nali_DATA_NODE_SEP_ARRAYS
-    // Does not return a reference because keys and payloads are stored
-    // separately.
-    // If possible, use key() and payload() instead.
-    V operator*() const {
-      return std::make_pair(cur_leaf_->key_slots_[cur_idx_],
-                            cur_leaf_->payload_slots_[cur_idx_]);
-    }
-#else
-    // If data node stores key-payload pairs contiguously, return reference to V
-    const V& operator*() const { return cur_leaf_->data_slots_[cur_idx_]; }
-#endif
-
-    const T& key() const { return cur_leaf_->get_key(cur_idx_); }
-
-    const P& payload() const { return cur_leaf_->get_payload(cur_idx_); }
-
-    bool is_end() const { return cur_leaf_ == nullptr; }
-
-    bool operator==(const ConstReverseIterator& rhs) const {
-      return cur_idx_ == rhs.cur_idx_ && cur_leaf_ == rhs.cur_leaf_;
-    }
-
-    bool operator!=(const ConstReverseIterator& rhs) const {
-      return !(*this == rhs);
-    };
-
-   private:
-    void initialize() {
-      if (!cur_leaf_) return;
-      assert(cur_idx_ >= 0);
-      if (cur_idx_ >= cur_leaf_->data_capacity_) {
-        cur_leaf_ = cur_leaf_->next_leaf_;
-        cur_idx_ = 0;
-        if (!cur_leaf_) return;
-      }
-
-      cur_bitmap_idx_ = cur_idx_ >> 6;
-      cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-
-      // Zero out extra bits
-      int bit_pos = cur_idx_ - (cur_bitmap_idx_ << 6);
-      cur_bitmap_data_ &= (1ULL << bit_pos) | ((1ULL << bit_pos) - 1);
-
-      advance();
-    }
-
-    forceinline void advance() {
-      while (cur_bitmap_data_ == 0) {
-        cur_bitmap_idx_--;
-        if (cur_bitmap_idx_ < 0) {
-          cur_leaf_ = cur_leaf_->prev_leaf_;
-          if (cur_leaf_ == nullptr) {
-            cur_idx_ = 0;
-            return;
-          }
-          cur_idx_ = cur_leaf_->data_capacity_ - 1;
-          cur_bitmap_idx_ = cur_leaf_->bitmap_size_ - 1;
-        }
-        cur_bitmap_data_ = cur_leaf_->bitmap_[cur_bitmap_idx_];
-      }
-      assert(cpu_supports_bmi());
-      int bit_pos = static_cast<int>(63 - _lzcnt_u64(cur_bitmap_data_));
-      cur_idx_ = (cur_bitmap_idx_ << 6) + bit_pos;
-      cur_bitmap_data_ &= ~(1ULL << bit_pos);
-    }
-  };
 
   // Iterates through all nodes with pre-order traversal
   class NodeIterator {
