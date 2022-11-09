@@ -35,11 +35,11 @@ void show_help(char* prog) {
 std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
 int thread_num = 1;
-size_t LOAD_SIZE   = 10000000;
-size_t PUT_SIZE    = 6000000;
-size_t GET_SIZE    = 1000000;
-size_t DELETE_SIZE = 1000000;
-int Loads_type = 0;
+size_t LOAD_SIZE   = 390000000;
+size_t PUT_SIZE    = 10000000;
+size_t GET_SIZE    = 10000000;
+size_t DELETE_SIZE = 10000000;
+int Loads_type = 3;
 
 template<typename T>
 std::vector<T>load_data_from_osm(const std::string dataname)
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
 
   int c;
   int opt_idx;
-  std::string  dbName= "alex";
+  std::string  dbName= "fastfair";
   std::string  load_file= "";
   while ((c = getopt_long(argc, argv, "t:s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
@@ -119,35 +119,43 @@ int main(int argc, char *argv[]) {
 
   Tree<size_t, size_t> *db = nullptr;
   if (dbName == "alex") {
-    db = new nali::alexdb<size_t, size_t>();
+    // db = new nali::alexdb<size_t, size_t>();
+    assert(false);
+  } else if  (dbName == "alexol") {
+    db = new nali::alexoldb<size_t, size_t>();
   } else if (dbName == "fastfair") {
     db = new nali::fastfairdb<size_t, size_t>();
   } else if (dbName == "nali") {
     db = new nali::nalidb<size_t, size_t>();
+  } else if (dbName == "art") {
+    db = new nali::artdb<size_t, size_t>();
   } else {
     LOG_ERROR("not defined db: %s", dbName.c_str());
     assert(false);
   }
+
+  // db->get_depth_info();
    
   // 目前alex好像修好了这个bug，不必须bulkload了
-  // if (dbName == "alex") {
-  //   int init_size = 10000000;
-  //   std::mt19937_64 gen_payload(std::random_device{}());
-  //   auto values = new std::pair<uint64_t, uint64_t>[init_size];
-  //   for (int i = 0; i < init_size; i++) {
-  //     // values[i].first = data_base[data_base.size() - i - 1];
-  //     values[i].first = data_base[i];
-  //     values[i].second = static_cast<uint64_t>(gen_payload());
-  //   }
-  //   std::sort(values, values + init_size,
-  //             [](auto const& a, auto const& b) { return a.first < b.first; });
-  //   LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
-  //   db->bulk_load(values, init_size);
-  //   LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
-  // }
+  if (true) {
+    int init_size = 50000000;
+    auto values = new std::pair<uint64_t, uint64_t>[init_size];
+    size_t start_idx = 300000000;
+    // 加载后1亿的数据
+    for (int i = 0; i < init_size; i++) {
+      values[i].first = data_base[i+start_idx];
+      values[i].second = data_base[i+start_idx];
+    }
+    std::sort(values, values + init_size,
+              [](auto const& a, auto const& b) { return a.first < b.first; });
+    LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
+    db->bulk_load(values, init_size);
+    LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
+  }
 
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
+    
     // Load
     auto ts = TIME_NOW;
     std::vector<std::thread> threads;
@@ -159,13 +167,17 @@ int main(int argc, char *argv[]) {
             size_t start_pos = thread_id * per_thread_size;
             size_t size = (thread_id == thread_num-1) ? LOAD_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             for (size_t j = 0; j < size; ++j) {
+                // std::cerr << "insert times: " << j  << "\n";
                 bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                if (!ret) {
-                    std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
-                    assert(false);
-                }
+                // if (!ret) {
+                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
+                //     assert(false);
+                // }
 
-                if(thread_id == 0 && (j + 1) % 1000000 == 0) std::cerr << "Operate: " << j + 1 << '\r';  
+                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
+                  std::cout << "Operate: " << j + 1 << std::endl;  
+                  // db->get_depth_info();
+                }
             }
         });
     }
@@ -193,10 +205,10 @@ int main(int argc, char *argv[]) {
             size_t size = (thread_id == thread_num-1) ? PUT_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             for (size_t j = 0; j < size; ++j) {
                 auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                if (ret != 1) {
-                    std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
-                    assert(0);
-                }
+                // if (ret != 1) {
+                //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
+                //     assert(0);
+                // }
                 if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
             }
         });
@@ -227,13 +239,16 @@ int main(int argc, char *argv[]) {
             size_t start_pos = thread_id *per_thread_size;
             size_t size = (thread_id == thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             size_t value;
+            int wrong_get = 0;
             for (size_t j = 0; j < size; ++j) {
                 bool ret = db->search(data_base[start_pos+j], &value);
                 if (!ret || value != data_base[start_pos+j]) {
-                    std::cout << "Get error!" << std::endl;
+                    // std::cout << "Get error!" << std::endl;
+                    wrong_get++;
                 }
                 if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
             }
+            std::cout << "wrong get: " << wrong_get << std::endl;
         });
     }
     for (auto& t : threads)

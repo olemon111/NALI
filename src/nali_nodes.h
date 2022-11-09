@@ -12,6 +12,8 @@
 
 #include "nali_base.h"
 
+#define DATANODE_MAX_SIZE (1 << 22)
+
 // Whether we store key and payload arrays separately in data nodes
 // By default, we store them separately
 #define Nali_DATA_NODE_SEP_ARRAYS 1
@@ -343,7 +345,7 @@ class NaliDataNode : public NaliNode<T, P> {
   double contraction_threshold_ =
       0;  // contract after m_num_keys is < this number
   static constexpr int kDefaultMaxDataNodeBytes_ =
-      1 << 24;  // by default, maximum data node size is 16MB
+      DATANODE_MAX_SIZE;  // by default, maximum data node size is 16MB - > 256K
   int max_slots_ =
       kDefaultMaxDataNodeBytes_ /
       sizeof(V);  // cannot expand beyond this number of key/data slots

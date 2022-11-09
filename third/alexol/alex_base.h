@@ -51,13 +51,54 @@ typedef unsigned __int32 uint32_t;
 #define forceinline inline
 #endif
 
-namespace alex {
+//#define DEBUG_OUTPUT
+#if defined(DEBUG_OUTPUT)
+#define PRINT_DEBUG(format, ...) printf(format,##__VA_ARGS__)
+#else
+#define PRINT_DEBUG(format, ...)
+#endif
+
+
+#include "util.h"
+
+namespace alexol {
+
+const uint32_t lockSet = ((uint32_t)1 << 31);
+const uint32_t lockMask = ((uint32_t)1 << 31) - 1;
+const int counterMask = (1 << 10) - 1;
+
+void align_alloc(void **ptr, size_t size){
+  posix_memalign(ptr, 64, size);
+}
+
+void align_zalloc(void **ptr, size_t size){
+  posix_memalign(ptr, 64, size);
+  memset(*ptr, 0, size);
+}
 
 /*** Linear model and model builder ***/
 
 // Forward declaration
 template <class T>
 class LinearModelBuilder;
+
+
+class StringOutput {
+public:
+  std::string s_;
+  StringOutput() {}
+  StringOutput(std::string s) {s_ = s;}
+  ~StringOutput() {
+#if defined(DEBUG_OUTPUT)
+    std::cout << "Thread " + std::to_string(omp_get_thread_num()) + s_ + "\n";
+#endif
+  }
+  void operator+=(std::string s) {
+#if defined(DEBUG_OUTPUT)
+    s_ = s_ + " " + s;
+#endif
+  }
+};
 
 // Linear regression model
 template <class T>
@@ -186,12 +227,12 @@ inline int get_offset(int word_id, uint64_t bit) {
 /*** Cost model weights ***/
 
 // Intra-node cost weights
-constexpr double kExpSearchIterationsWeight = 20;
-constexpr double kShiftsWeight = 0.5;
+double kExpSearchIterationsWeight = 20;
+double kShiftsWeight = 0.5;
 
 // TraverseToLeaf cost weights
-constexpr double kNodeLookupsWeight = 20;
-constexpr double kModelSizeWeight = 5e-7;
+double kNodeLookupsWeight = 20;
+double kModelSizeWeight = 5e-7;
 
 /*** Stat Accumulators ***/
 
@@ -385,7 +426,7 @@ class CPUID {
 };
 
 // https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
-inline bool cpu_supports_bmi() {
+bool cpu_supports_bmi() {
   return static_cast<bool>(CPUID(7, 0).EBX() & (1 << 3));
 }
 }

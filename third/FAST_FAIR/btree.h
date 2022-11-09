@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "util/allocator.h"
+// #include "util/allocator.h"
 
 using namespace std;
 
@@ -46,7 +46,8 @@ using entry_key_t = int64_t;
 pthread_mutex_t print_mtx;
 
 static inline void clflush(void *addr, size_t size) {
-  my_alloc::BasePMPool::Persist(addr, size);
+  // my_alloc::BasePMPool::Persist(addr, size);
+  // pmem_persist(addr, size);
 }
 
 unsigned long write_latency_in_ns = 0;
@@ -154,8 +155,8 @@ public:
 
   void *operator new(size_t size) {
     void *ret;
-    // posix_memalign(&ret, 64, size);
-    my_alloc::BasePMPool::AlignAllocate(&ret, size);
+    posix_memalign(&ret, 64, size);
+    // my_alloc::BasePMPool::AlignAllocate(&ret, size);
     return ret;
   }
 

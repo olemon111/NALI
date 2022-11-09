@@ -64,6 +64,7 @@
   do {                                                                                                    \
     GET_TIME                                                                                              \
     DEBUG("\033[;34m[INFO]  %s %s:%d: " format "\n\033[0m", TIME, __FILENAME__, __LINE__, ##__VA_ARGS__); \
+    std::fflush(stdout);\
   } while (0)
 #else
 #define LOG_INFO(format, ...)

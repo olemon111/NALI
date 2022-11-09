@@ -12,7 +12,9 @@ function Run() {
     Loadname="ycsb-400m-zipf0.9"
     date | tee multi-${dbname}-${Loadname}-th${thread}.txt
     # gdb --args \
-    LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1" numactl --cpunodebind=1 --membind=1 ${BUILDDIR}multi_bench --dbname ${dbname} \
+    # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
+    numactl --cpunodebind=1 --membind=1 \
+    ${BUILDDIR}multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --put-size ${opnum} --get-size ${opnum} \
         -t $thread | tee -a multi-${dbname}-${Loadname}-th${thread}.txt
     echo "----------------"
@@ -55,11 +57,11 @@ function Run() {
     # sleep 60
 }
 
-loadnum=70000000
-opnum=30000000
+loadnum=290000000
+opnum=10000000
 scansize=4000000
-dbname="nali"
-for thread in 1
+dbname="art"
+for thread in 16
 do
     Run $dbname $loadnum $opnum $scansize $thread
 done

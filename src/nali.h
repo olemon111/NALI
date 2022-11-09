@@ -97,7 +97,7 @@ class Nali {
   struct DerivedParams {
     // The defaults here assume the default max node size of 16MB
     int max_fanout = 1 << 21;  // assumes 8-byte pointers
-    int max_data_node_slots = (1 << 24) / sizeof(V);
+    int max_data_node_slots = DATANODE_MAX_SIZE / sizeof(V);
   };
   DerivedParams derived_params_;
 
@@ -201,6 +201,8 @@ class Nali {
 
   Compare key_less_ = Compare();
   Alloc allocator_ = Alloc();
+
+  shared_mutex_u8 expand_root_lock;
 
   /*** Constructors and setters ***/
 
@@ -591,7 +593,9 @@ class Nali {
   // Updates the key domain based on the min/max keys and retrains the model.
   // Should only be called immediately after bulk loading or when the root node
   // is a data node.
-  void update_superroot_key_domain() {
+  void update_superroot_key_domain() { // 3次
+    std::cout << "update superroot key domain" << std::endl;
+    expand_root_lock.lock();
     assert(stats_.num_inserts == 0 || root_node_->is_leaf_);
     istats_.key_domain_min_ = get_min_key();
     istats_.key_domain_max_ = get_max_key();
@@ -603,6 +607,7 @@ class Nali {
         1.0 / (istats_.key_domain_max_ - istats_.key_domain_min_);
     superroot_->model_.b_ =
         -1.0 * istats_.key_domain_min_ * superroot_->model_.a_;
+    expand_root_lock.unlock();
   }
 
   void update_superroot_pointer() {
@@ -832,6 +837,10 @@ class Nali {
     return insert(value.first, value.second);
   }
 
+  size_t get_root_children_nums() const {
+    return static_cast<model_node_type*>(root_node_)->num_children_;
+  }
+
   // This will NOT do an update of an existing key.
   // To perform an update or read-modify-write, do a lookup and modify the
   // payload's value.
@@ -842,6 +851,8 @@ class Nali {
   bool insert(const T& key, const P& payload) {
     // If enough keys fall outside the key domain, expand the root to expand the
     // key domain
+RETRY:
+    // expand_root只有一次
     if (key > istats_.key_domain_max_) {
       istats_.num_keys_above_key_domain++;
       if (should_expand_right()) {
@@ -861,13 +872,29 @@ class Nali {
     int fail = ret.first;
     int insert_pos = ret.second;
     if (fail == -1) {
-      // Duplicate found and duplicates not allowed
-      return false;
-    }
+        // Duplicate found and duplicates not allowed
+        return false;
+      }
 
     // If no insert, figure out what to do with the data node to decrease the
     // cost
     if (fail) {
+      if (fail == -1) {
+        // Duplicate found and duplicates not allowed
+        return false;
+      }
+
+      // if (fail == IS_IN_SMO) {
+      //   goto RETRY;
+      // }
+
+      // if (fail == NEED_TO_RESIZE) { // 在叶节点内部已经加SMO锁
+      //   // 叶子节点扩展，需要对父节点加读锁
+      //   // 异地SMO
+      //   // 安全删除leaf
+      // }
+
+      // else 
       std::vector<TraversalNode> traversal_path;
       get_leaf(key, &traversal_path);
       model_node_type* parent = traversal_path.back().node;
@@ -885,65 +912,70 @@ class Nali {
         std::vector<fanout_tree::FTNode> used_fanout_tree_nodes;
 
         int fanout_tree_depth = 1;
-        if (experimental_params_.splitting_policy_method == 0 || fail >= 2) {
-          // always split in 2. No extra work required here
-        } else if (experimental_params_.splitting_policy_method == 1) {
-          // decide between no split (i.e., expand and retrain) or splitting in
-          // 2
-          fanout_tree_depth = fanout_tree::find_best_fanout_existing_node<T, P>(
-              parent, bucketID, stats_.num_keys, used_fanout_tree_nodes, 2);
-        } else if (experimental_params_.splitting_policy_method == 2) {
-          // use full fanout tree to decide fanout
-          fanout_tree_depth = fanout_tree::find_best_fanout_existing_node<T, P>(
-              parent, bucketID, stats_.num_keys, used_fanout_tree_nodes,
-              derived_params_.max_fanout);
-        }
+        // if (experimental_params_.splitting_policy_method == 0 || fail >= 2) {
+        //   // always split in 2. No extra work required here
+        // } else if (experimental_params_.splitting_policy_method == 1) {
+        //   // decide between no split (i.e., expand and retrain) or splitting in
+        //   // 2
+        //   fanout_tree_depth = fanout_tree::find_best_fanout_existing_node<T, P>(
+        //       parent, bucketID, stats_.num_keys, used_fanout_tree_nodes, 2);
+        // } else if (experimental_params_.splitting_policy_method == 2) {
+        //   // use full fanout tree to decide fanout
+        //   fanout_tree_depth = fanout_tree::find_best_fanout_existing_node<T, P>(
+        //       parent, bucketID, stats_.num_keys, used_fanout_tree_nodes,
+        //       derived_params_.max_fanout);
+        // }
         int best_fanout = 1 << fanout_tree_depth;
         stats_.cost_computation_time +=
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::high_resolution_clock::now() - start_time)
                 .count();
 
-        if (fanout_tree_depth == 0) {
-          // expand existing data node and retrain model
-          leaf->resize(data_node_type::kMinDensity_, true,
-                       leaf->is_append_mostly_right(),
-                       leaf->is_append_mostly_left());
-          fanout_tree::FTNode& tree_node = used_fanout_tree_nodes[0];
-          leaf->cost_ = tree_node.cost;
-          leaf->expected_avg_exp_search_iterations_ =
-              tree_node.expected_avg_search_iterations;
-          leaf->expected_avg_shifts_ = tree_node.expected_avg_shifts;
-          leaf->reset_stats();
-          stats_.num_expand_and_retrains++;
-        } else {
+        // if (fanout_tree_depth == 0) {
+        //   // expand existing data node and retrain model
+        //   leaf->resize(data_node_type::kMinDensity_, true,
+        //                leaf->is_append_mostly_right(),
+        //                leaf->is_append_mostly_left());
+        //   fanout_tree::FTNode& tree_node = used_fanout_tree_nodes[0];
+        //   leaf->cost_ = tree_node.cost;
+        //   leaf->expected_avg_exp_search_iterations_ =
+        //       tree_node.expected_avg_search_iterations;
+        //   leaf->expected_avg_shifts_ = tree_node.expected_avg_shifts;
+        //   leaf->reset_stats();
+        //   stats_.num_expand_and_retrains++; // 进这里次数只有6次
+        // } else 
+        {
           // split data node: always try to split sideways/upwards, only split
           // downwards if necessary
           bool reuse_model = (fail == 3);
-          if (experimental_params_.allow_splitting_upwards) {
-            // allow splitting upwards
-            assert(experimental_params_.splitting_policy_method != 2);
-            int stop_propagation_level = best_split_propagation(traversal_path);
-            if (stop_propagation_level <= superroot_->level_) {
-              parent = split_downwards(parent, bucketID, fanout_tree_depth,
-                                       used_fanout_tree_nodes, reuse_model);
-            } else {
-              split_upwards(key, stop_propagation_level, traversal_path,
-                            reuse_model, &parent);
-            }
-          } else {
+          // if (experimental_params_.allow_splitting_upwards) {
+          //   // allow splitting upwards
+          //   assert(experimental_params_.splitting_policy_method != 2);
+          //   int stop_propagation_level = best_split_propagation(traversal_path);
+          //   if (stop_propagation_level <= superroot_->level_) {
+          //     parent = split_downwards(parent, bucketID, fanout_tree_depth,
+          //                              used_fanout_tree_nodes, reuse_model);
+          //   } else {
+          //     split_upwards(key, stop_propagation_level, traversal_path,
+          //                   reuse_model, &parent);
+          //   }
+          // } else 
+          {
             // either split sideways or downwards
             bool should_split_downwards =
                 (parent->num_children_ * best_fanout /
                          (1 << leaf->duplication_factor_) >
                      derived_params_.max_fanout ||
-                 parent->level_ == superroot_->level_);
+                 parent->level_ == superroot_->level_); // 父节点空间不够或者父节点是superroot
             if (should_split_downwards) {
               parent = split_downwards(parent, bucketID, fanout_tree_depth,
-                                       used_fanout_tree_nodes, reuse_model);
+                                       used_fanout_tree_nodes, reuse_model); // 进这里只有1次
             } else {
+              if (fanout_tree_depth != 1) {
+                std::cout << "should not be other nums" << fanout_tree_depth << std::endl;
+              }
               split_sideways(parent, bucketID, fanout_tree_depth,
-                             used_fanout_tree_nodes, reuse_model);
+                             used_fanout_tree_nodes, reuse_model); // 1000次
             }
           }
           leaf = static_cast<data_node_type*>(parent->get_child_node(key));
@@ -1065,6 +1097,8 @@ class Nali {
   // If the root node is at the max node size, then we split the root and create
   // a new root node.
   void expand_root(T key, bool expand_left) {
+    // expand root加全局rwlock
+    expand_root_lock.lock();
     auto root = static_cast<model_node_type*>(root_node_);
 
     // Find the new bounds of the key domain.
@@ -1121,11 +1155,14 @@ class Nali {
     int new_nodes_start;  // index of first pointer to a new node
     int new_nodes_end;    // exclusive
     if (static_cast<size_t>(root->num_children_) * expansion_factor <=
-        static_cast<size_t>(derived_params_.max_fanout)) {
+        static_cast<size_t>(derived_params_.max_fanout)) { // 没有达到最大扇出，root扩展
       // Expand root node
+      std::cout << "expand root" << std::endl;
       stats_.num_model_node_expansions++;
       stats_.num_model_node_expansion_pointers += root->num_children_;
-
+      // auto new_root = new (model_node_allocator().allocate(1))
+      //     model_node_type(static_cast<short>(root->level_), allocator_);
+      // new (new_root) model_node_type(*root);
       int new_num_children = root->num_children_ * expansion_factor;
       auto new_children = new (pointer_allocator().allocate(new_num_children))
           NaliNode<T, P>*[new_num_children];
@@ -1135,6 +1172,7 @@ class Nali {
         new_nodes_start = 0;
         new_nodes_end = copy_start;
         root->model_.b_ += new_num_children - root->num_children_;
+        // new_root->model_.b_ += new_num_children - root->num_children_;
       } else {
         copy_start = 0;
         new_nodes_start = root->num_children_;
@@ -1143,10 +1181,15 @@ class Nali {
       for (int i = 0; i < root->num_children_; i++) {
         new_children[copy_start + i] = root->children_[i];
       }
+      // ZZY:(FIXME) apex does not free old root node
       pointer_allocator().deallocate(root->children_, root->num_children_);
       root->children_ = new_children;
       root->num_children_ = new_num_children;
+      // root = new_root;
+      // root_node_ = new_root;
+      // update_superroot_pointer();
     } else {
+      std::cout << "split root" << std::endl;
       // Create new root node
       auto new_root = new (model_node_allocator().allocate(1))
           model_node_type(static_cast<short>(root->level_ - 1), allocator_);
@@ -1270,6 +1313,8 @@ class Nali {
 
     istats_.key_domain_min_ = new_domain_min;
     istats_.key_domain_max_ = new_domain_max;
+    std::cout << "expand root, childre nums: " << root->num_children_ << std::endl;
+    expand_root_lock.unlock();
   }
 
   // Splits downwards in the manner determined by the fanout tree and updates
@@ -1280,6 +1325,21 @@ class Nali {
       model_node_type* parent, int bucketID, int fanout_tree_depth,
       std::vector<fanout_tree::FTNode>& used_fanout_tree_nodes,
       bool reuse_model) {
+    std::cout << "split downwards" << std::endl;
+    {
+      auto stat = get_stats();
+      std::cout << "num_keys: " << stat.num_keys << "\n"
+              << "num_model_nodes: " << stat.num_model_nodes << "\n"
+              << "num_data_nodes: " << stat.num_data_nodes << "\n"
+              << "num_expand_and_scales: " << stat.num_expand_and_scales << "\n"
+              << "num_expand_and_retrains: " << stat.num_expand_and_retrains << "\n"
+              << "num_downward_splits: " << stat.num_downward_splits << "\n"
+              << "num_sideways_splits: " << stat.num_sideways_splits << "\n"
+              << "num_model_node_expansions: " << stat.num_model_node_expansions << "\n"
+              << "num_model_node_splits: " << stat.num_model_node_splits << "\n";
+      std::cout << "root child nums: " << get_root_children_nums() << "\n";
+    }
+
     auto leaf = static_cast<data_node_type*>(parent->children_[bucketID]);
     stats_.num_downward_splits++;
     stats_.num_downward_split_keys += leaf->num_keys_;
@@ -1347,7 +1407,8 @@ class Nali {
       stats_.num_model_node_expansions++;
       stats_.num_model_node_expansion_pointers += parent->num_children_;
       int expansion_factor =
-          parent->expand(fanout_tree_depth - leaf->duplication_factor_);
+          parent->expand(fanout_tree_depth - leaf->duplication_factor_); // 父节点首先需要扩展
+      std::cout << "parent expand, parent level: " << parent->level_ << std::endl;  // 调用10次
       repeats *= expansion_factor;
       bucketID *= expansion_factor;
     }
@@ -1524,342 +1585,350 @@ class Nali {
       T key, int stop_propagation_level,
       const std::vector<TraversalNode>& traversal_path, bool reuse_model,
       model_node_type** new_parent, bool verbose = false) {
-    assert(stop_propagation_level >= root_node_->level_);
-    std::vector<NaliNode<T, P>*> to_delete;  // nodes that need to be deleted
-
-    // Split the data node into two new data nodes
-    const TraversalNode& parent_path_node = traversal_path.back();
-    model_node_type* parent = parent_path_node.node;
-    auto leaf = static_cast<data_node_type*>(
-        parent->children_[parent_path_node.bucketID]);
-    int leaf_repeats = 1 << (leaf->duplication_factor_);
-    int leaf_start_bucketID =
-        parent_path_node.bucketID - (parent_path_node.bucketID % leaf_repeats);
-    double leaf_mid_bucketID = leaf_start_bucketID + leaf_repeats / 2.0;
-    int leaf_end_bucketID =
-        leaf_start_bucketID + leaf_repeats;  // first bucket with next child
-    stats_.num_sideways_splits++;
-    stats_.num_sideways_split_keys += leaf->num_keys_;
-
-    // Determine if either of the two new data nodes will need to adapt to
-    // append-mostly behavior
-    bool append_mostly_right = leaf->is_append_mostly_right();
-    bool left_half_appending_right = false, right_half_appending_right = false;
-    if (append_mostly_right) {
-      double appending_right_bucketID =
-          parent->model_.predict_double(leaf->max_key_);
-      if (appending_right_bucketID >= leaf_start_bucketID &&
-          appending_right_bucketID < leaf_mid_bucketID) {
-        left_half_appending_right = true;
-      } else if (appending_right_bucketID >= leaf_mid_bucketID &&
-                 appending_right_bucketID < leaf_end_bucketID) {
-        right_half_appending_right = true;
-      }
-    }
-    bool append_mostly_left = leaf->is_append_mostly_left();
-    bool left_half_appending_left = false, right_half_appending_left = false;
-    if (append_mostly_left) {
-      double appending_left_bucketID =
-          parent->model_.predict_double(leaf->min_key_);
-      if (appending_left_bucketID >= leaf_start_bucketID &&
-          appending_left_bucketID < leaf_mid_bucketID) {
-        left_half_appending_left = true;
-      } else if (appending_left_bucketID >= leaf_mid_bucketID &&
-                 appending_left_bucketID < leaf_end_bucketID) {
-        right_half_appending_left = true;
-      }
-    }
-
-    int mid_boundary = leaf->lower_bound(
-        (leaf_mid_bucketID - parent->model_.b_) / parent->model_.a_);
-    data_node_type* left_leaf = bulk_load_leaf_node_from_existing(
-        leaf, 0, mid_boundary, true, nullptr, reuse_model,
-        append_mostly_right && left_half_appending_right,
-        append_mostly_left && left_half_appending_left);
-    data_node_type* right_leaf = bulk_load_leaf_node_from_existing(
-        leaf, mid_boundary, leaf->data_capacity_, true, nullptr, reuse_model,
-        append_mostly_right && right_half_appending_right,
-        append_mostly_left && right_half_appending_left);
-    // This is the expected duplication factor; it will be correct once we
-    // split/expand the parent
-    left_leaf->duplication_factor_ = leaf->duplication_factor_;
-    right_leaf->duplication_factor_ = leaf->duplication_factor_;
-    left_leaf->level_ = leaf->level_;
-    right_leaf->level_ = leaf->level_;
-    link_data_nodes(leaf, left_leaf, right_leaf);
-    to_delete.push_back(leaf);
-    stats_.num_data_nodes--;
-
-    if (verbose) {
-      std::cout << "[Splitting upwards data node] level " << leaf->level_
-                << ", node addr: " << leaf
-                << ", node repeats in parent: " << leaf_repeats
-                << ", node indexes in parent: [" << leaf_start_bucketID << ", "
-                << leaf_end_bucketID << ")"
-                << ", left leaf indexes: [0, " << mid_boundary << ")"
-                << ", right leaf indexes: [" << mid_boundary << ", "
-                << leaf->data_capacity_ << ")"
-                << ", new nodes addr: " << left_leaf << "," << right_leaf
-                << std::endl;
-    }
-
-    // The new data node that the key falls into is the one we return
-    data_node_type* new_data_node;
-    if (parent->model_.predict_double(key) < leaf_mid_bucketID) {
-      new_data_node = left_leaf;
-    } else {
-      new_data_node = right_leaf;
-    }
-
-    // Split all internal nodes from the parent up to the highest node along the
-    // traversal path.
-    // As this happens, the entries of the traversal path will go stale, which
-    // is fine because we no longer use them.
-    // Splitting an internal node involves dividing the child pointers into two
-    // halves, and doubling the relevant half.
-    NaliNode<T, P>* prev_left_split = left_leaf;
-    NaliNode<T, P>* prev_right_split = right_leaf;
-    int path_idx = static_cast<int>(traversal_path.size()) - 1;
-    while (traversal_path[path_idx].node->level_ > stop_propagation_level) {
-      // Decide which half to double
-      const TraversalNode& path_node = traversal_path[path_idx];
-      model_node_type* cur_node = path_node.node;
-      stats_.num_model_node_splits++;
-      stats_.num_model_node_split_pointers += cur_node->num_children_;
-      bool double_left_half = path_node.bucketID < cur_node->num_children_ / 2;
-      model_node_type* left_split = nullptr;
-      model_node_type* right_split = nullptr;
-
-      // If one of the resulting halves will only have one child pointer, we
-      // should "pull up" that child
-      bool pull_up_left_child = false, pull_up_right_child = false;
-      NaliNode<T, P>* left_half_first_child = cur_node->children_[0];
-      NaliNode<T, P>* right_half_first_child =
-          cur_node->children_[cur_node->num_children_ / 2];
-      if (double_left_half &&
-          (1 << right_half_first_child->duplication_factor_) ==
-              cur_node->num_children_ / 2) {
-        // pull up right child if all children in the right half are the same
-        pull_up_right_child = true;
-        left_split = new (model_node_allocator().allocate(1))
-            model_node_type(cur_node->level_, allocator_);
-      } else if (!double_left_half &&
-                 (1 << left_half_first_child->duplication_factor_) ==
-                     cur_node->num_children_ / 2) {
-        // pull up left child if all children in the left half are the same
-        pull_up_left_child = true;
-        right_split = new (model_node_allocator().allocate(1))
-            model_node_type(cur_node->level_, allocator_);
-      } else {
-        left_split = new (model_node_allocator().allocate(1))
-            model_node_type(cur_node->level_, allocator_);
-        right_split = new (model_node_allocator().allocate(1))
-            model_node_type(cur_node->level_, allocator_);
+        std::cout << "should not be here" << std::endl;
+        return nullptr;
       }
 
-      // Do the split
-      NaliNode<T, P>* next_left_split = nullptr;
-      NaliNode<T, P>* next_right_split = nullptr;
-      if (double_left_half) {
-        // double left half
-        assert(left_split != nullptr);
-        if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
-          *new_parent = left_split;
-        }
-        left_split->num_children_ = cur_node->num_children_;
-        left_split->children_ =
-            new (pointer_allocator().allocate(left_split->num_children_))
-                NaliNode<T, P>*[left_split->num_children_];
-        left_split->model_.a_ = cur_node->model_.a_ * 2;
-        left_split->model_.b_ = cur_node->model_.b_ * 2;
-        int cur = 0;
-        while (cur < cur_node->num_children_ / 2) {
-          NaliNode<T, P>* cur_child = cur_node->children_[cur];
-          int cur_child_repeats = 1 << cur_child->duplication_factor_;
-          for (int i = 2 * cur; i < 2 * (cur + cur_child_repeats); i++) {
-            left_split->children_[i] = cur_child;
-          }
-          cur_child->duplication_factor_++;
-          cur += cur_child_repeats;
-        }
-        assert(cur == cur_node->num_children_ / 2);
+  // data_node_type* split_upwards(
+  //     T key, int stop_propagation_level,
+  //     const std::vector<TraversalNode>& traversal_path, bool reuse_model,
+  //     model_node_type** new_parent, bool verbose = false) {
+  //   assert(stop_propagation_level >= root_node_->level_);
+  //   std::vector<NaliNode<T, P>*> to_delete;  // nodes that need to be deleted
 
-        if (pull_up_right_child) {
-          next_right_split = cur_node->children_[cur_node->num_children_ / 2];
-          next_right_split->level_ = cur_node->level_;
-        } else {
-          right_split->num_children_ = cur_node->num_children_ / 2;
-          right_split->children_ =
-              new (pointer_allocator().allocate(right_split->num_children_))
-                  NaliNode<T, P>*[right_split->num_children_];
-          right_split->model_.a_ = cur_node->model_.a_;
-          right_split->model_.b_ =
-              cur_node->model_.b_ - cur_node->num_children_ / 2;
-          int j = 0;
-          for (int i = cur_node->num_children_ / 2; i < cur_node->num_children_;
-               i++) {
-            right_split->children_[j] = cur_node->children_[i];
-            j++;
-          }
-          next_right_split = right_split;
-        }
+  //   // Split the data node into two new data nodes
+  //   const TraversalNode& parent_path_node = traversal_path.back();
+  //   model_node_type* parent = parent_path_node.node;
+  //   auto leaf = static_cast<data_node_type*>(
+  //       parent->children_[parent_path_node.bucketID]);
+  //   int leaf_repeats = 1 << (leaf->duplication_factor_);
+  //   int leaf_start_bucketID =
+  //       parent_path_node.bucketID - (parent_path_node.bucketID % leaf_repeats);
+  //   double leaf_mid_bucketID = leaf_start_bucketID + leaf_repeats / 2.0;
+  //   int leaf_end_bucketID =
+  //       leaf_start_bucketID + leaf_repeats;  // first bucket with next child
+  //   stats_.num_sideways_splits++;
+  //   stats_.num_sideways_split_keys += leaf->num_keys_;
 
-        int new_bucketID = path_node.bucketID * 2;
-        int repeats = 1 << (prev_left_split->duplication_factor_ + 1);
-        int start_bucketID =
-            new_bucketID -
-            (new_bucketID % repeats);  // first bucket with same child
-        int mid_bucketID = start_bucketID + repeats / 2;
-        int end_bucketID =
-            start_bucketID + repeats;  // first bucket with next child
-        for (int i = start_bucketID; i < mid_bucketID; i++) {
-          left_split->children_[i] = prev_left_split;
-        }
-        for (int i = mid_bucketID; i < end_bucketID; i++) {
-          left_split->children_[i] = prev_right_split;
-        }
-        next_left_split = left_split;
-      } else {
-        // double right half
-        assert(right_split != nullptr);
-        if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
-          *new_parent = right_split;
-        }
-        if (pull_up_left_child) {
-          next_left_split = cur_node->children_[0];
-          next_left_split->level_ = cur_node->level_;
-        } else {
-          left_split->num_children_ = cur_node->num_children_ / 2;
-          left_split->children_ =
-              new (pointer_allocator().allocate(left_split->num_children_))
-                  NaliNode<T, P>*[left_split->num_children_];
-          left_split->model_.a_ = cur_node->model_.a_;
-          left_split->model_.b_ = cur_node->model_.b_;
-          int j = 0;
-          for (int i = 0; i < cur_node->num_children_ / 2; i++) {
-            left_split->children_[j] = cur_node->children_[i];
-            j++;
-          }
-          next_left_split = left_split;
-        }
+  //   // Determine if either of the two new data nodes will need to adapt to
+  //   // append-mostly behavior
+  //   bool append_mostly_right = leaf->is_append_mostly_right();
+  //   bool left_half_appending_right = false, right_half_appending_right = false;
+  //   if (append_mostly_right) {
+  //     double appending_right_bucketID =
+  //         parent->model_.predict_double(leaf->max_key_);
+  //     if (appending_right_bucketID >= leaf_start_bucketID &&
+  //         appending_right_bucketID < leaf_mid_bucketID) {
+  //       left_half_appending_right = true;
+  //     } else if (appending_right_bucketID >= leaf_mid_bucketID &&
+  //                appending_right_bucketID < leaf_end_bucketID) {
+  //       right_half_appending_right = true;
+  //     }
+  //   }
+  //   bool append_mostly_left = leaf->is_append_mostly_left();
+  //   bool left_half_appending_left = false, right_half_appending_left = false;
+  //   if (append_mostly_left) {
+  //     double appending_left_bucketID =
+  //         parent->model_.predict_double(leaf->min_key_);
+  //     if (appending_left_bucketID >= leaf_start_bucketID &&
+  //         appending_left_bucketID < leaf_mid_bucketID) {
+  //       left_half_appending_left = true;
+  //     } else if (appending_left_bucketID >= leaf_mid_bucketID &&
+  //                appending_left_bucketID < leaf_end_bucketID) {
+  //       right_half_appending_left = true;
+  //     }
+  //   }
 
-        right_split->num_children_ = cur_node->num_children_;
-        right_split->children_ =
-            new (pointer_allocator().allocate(right_split->num_children_))
-                NaliNode<T, P>*[right_split->num_children_];
-        right_split->model_.a_ = cur_node->model_.a_ * 2;
-        right_split->model_.b_ =
-            (cur_node->model_.b_ - cur_node->num_children_ / 2) * 2;
-        int cur = cur_node->num_children_ / 2;
-        while (cur < cur_node->num_children_) {
-          NaliNode<T, P>* cur_child = cur_node->children_[cur];
-          int cur_child_repeats = 1 << cur_child->duplication_factor_;
-          int right_child_idx = cur - cur_node->num_children_ / 2;
-          for (int i = 2 * right_child_idx;
-               i < 2 * (right_child_idx + cur_child_repeats); i++) {
-            right_split->children_[i] = cur_child;
-          }
-          cur_child->duplication_factor_++;
-          cur += cur_child_repeats;
-        }
-        assert(cur == cur_node->num_children_);
+  //   int mid_boundary = leaf->lower_bound(
+  //       (leaf_mid_bucketID - parent->model_.b_) / parent->model_.a_);
+  //   data_node_type* left_leaf = bulk_load_leaf_node_from_existing(
+  //       leaf, 0, mid_boundary, true, nullptr, reuse_model,
+  //       append_mostly_right && left_half_appending_right,
+  //       append_mostly_left && left_half_appending_left);
+  //   data_node_type* right_leaf = bulk_load_leaf_node_from_existing(
+  //       leaf, mid_boundary, leaf->data_capacity_, true, nullptr, reuse_model,
+  //       append_mostly_right && right_half_appending_right,
+  //       append_mostly_left && right_half_appending_left);
+  //   // This is the expected duplication factor; it will be correct once we
+  //   // split/expand the parent
+  //   left_leaf->duplication_factor_ = leaf->duplication_factor_;
+  //   right_leaf->duplication_factor_ = leaf->duplication_factor_;
+  //   left_leaf->level_ = leaf->level_;
+  //   right_leaf->level_ = leaf->level_;
+  //   link_data_nodes(leaf, left_leaf, right_leaf);
+  //   to_delete.push_back(leaf);
+  //   stats_.num_data_nodes--;
 
-        int new_bucketID =
-            (path_node.bucketID - cur_node->num_children_ / 2) * 2;
-        int repeats = 1 << (prev_left_split->duplication_factor_ + 1);
-        int start_bucketID =
-            new_bucketID -
-            (new_bucketID % repeats);  // first bucket with same child
-        int mid_bucketID = start_bucketID + repeats / 2;
-        int end_bucketID =
-            start_bucketID + repeats;  // first bucket with next child
-        for (int i = start_bucketID; i < mid_bucketID; i++) {
-          right_split->children_[i] = prev_left_split;
-        }
-        for (int i = mid_bucketID; i < end_bucketID; i++) {
-          right_split->children_[i] = prev_right_split;
-        }
-        next_right_split = right_split;
-      }
-      assert(next_left_split != nullptr && next_right_split != nullptr);
-      if (verbose) {
-        std::cout << "[Splitting upwards through-node] level "
-                  << cur_node->level_ << ", node addr: " << path_node.node
-                  << ", node children: " << path_node.node->num_children_
-                  << ", child index: " << path_node.bucketID
-                  << ", child repeats in node: "
-                  << (1 << prev_left_split->duplication_factor_)
-                  << ", node repeats in parent: "
-                  << (1 << path_node.node->duplication_factor_)
-                  << ", new nodes addr: " << left_split << "," << right_split
-                  << std::endl;
-      }
-      to_delete.push_back(cur_node);
-      if (!pull_up_left_child && !pull_up_right_child) {
-        stats_.num_model_nodes++;
-      }
-      // This is the expected duplication factor; it will be correct once we
-      // split/expand the parent
-      next_left_split->duplication_factor_ = cur_node->duplication_factor_;
-      next_right_split->duplication_factor_ = cur_node->duplication_factor_;
-      prev_left_split = next_left_split;
-      prev_right_split = next_right_split;
-      path_idx--;
-    }
+  //   if (verbose) {
+  //     std::cout << "[Splitting upwards data node] level " << leaf->level_
+  //               << ", node addr: " << leaf
+  //               << ", node repeats in parent: " << leaf_repeats
+  //               << ", node indexes in parent: [" << leaf_start_bucketID << ", "
+  //               << leaf_end_bucketID << ")"
+  //               << ", left leaf indexes: [0, " << mid_boundary << ")"
+  //               << ", right leaf indexes: [" << mid_boundary << ", "
+  //               << leaf->data_capacity_ << ")"
+  //               << ", new nodes addr: " << left_leaf << "," << right_leaf
+  //               << std::endl;
+  //   }
 
-    // Insert into the top node
-    const TraversalNode& top_path_node = traversal_path[path_idx];
-    model_node_type* top_node = top_path_node.node;
-    assert(top_node->level_ == stop_propagation_level);
-    if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
-      *new_parent = top_node;
-    }
-    int top_bucketID = top_path_node.bucketID;
-    int repeats =
-        1 << prev_left_split->duplication_factor_;  // this was the duplication
-                                                    // factor of the child that
-                                                    // was deleted
-    if (verbose) {
-      std::cout << "[Splitting upwards top node] level "
-                << stop_propagation_level << ", node addr: " << top_node
-                << ", node children: " << top_node->num_children_
-                << ", child index: " << top_bucketID
-                << ", child repeats in node: " << repeats
-                << ", node repeats in parent: "
-                << (1 << top_node->duplication_factor_) << std::endl;
-    }
+  //   // The new data node that the key falls into is the one we return
+  //   data_node_type* new_data_node;
+  //   if (parent->model_.predict_double(key) < leaf_mid_bucketID) {
+  //     new_data_node = left_leaf;
+  //   } else {
+  //     new_data_node = right_leaf;
+  //   }
 
-    // Expand the top node if necessary
-    if (repeats == 1) {
-      stats_.num_model_node_expansions++;
-      stats_.num_model_node_expansion_pointers += top_node->num_children_;
-      top_node->expand(1);  // double size of top node
-      top_bucketID *= 2;
-      repeats *= 2;
-    } else {
-      prev_left_split->duplication_factor_--;
-      prev_right_split->duplication_factor_--;
-    }
+  //   // Split all internal nodes from the parent up to the highest node along the
+  //   // traversal path.
+  //   // As this happens, the entries of the traversal path will go stale, which
+  //   // is fine because we no longer use them.
+  //   // Splitting an internal node involves dividing the child pointers into two
+  //   // halves, and doubling the relevant half.
+  //   NaliNode<T, P>* prev_left_split = left_leaf;
+  //   NaliNode<T, P>* prev_right_split = right_leaf;
+  //   int path_idx = static_cast<int>(traversal_path.size()) - 1;
+  //   while (traversal_path[path_idx].node->level_ > stop_propagation_level) {
+  //     // Decide which half to double
+  //     const TraversalNode& path_node = traversal_path[path_idx];
+  //     model_node_type* cur_node = path_node.node;
+  //     stats_.num_model_node_splits++;
+  //     stats_.num_model_node_split_pointers += cur_node->num_children_;
+  //     bool double_left_half = path_node.bucketID < cur_node->num_children_ / 2;
+  //     model_node_type* left_split = nullptr;
+  //     model_node_type* right_split = nullptr;
 
-    int start_bucketID =
-        top_bucketID -
-        (top_bucketID % repeats);  // first bucket with same child
-    int mid_bucketID = start_bucketID + repeats / 2;
-    int end_bucketID =
-        start_bucketID + repeats;  // first bucket with next child
-    for (int i = start_bucketID; i < mid_bucketID; i++) {
-      top_node->children_[i] = prev_left_split;
-    }
-    for (int i = mid_bucketID; i < end_bucketID; i++) {
-      top_node->children_[i] = prev_right_split;
-    }
+  //     // If one of the resulting halves will only have one child pointer, we
+  //     // should "pull up" that child
+  //     bool pull_up_left_child = false, pull_up_right_child = false;
+  //     NaliNode<T, P>* left_half_first_child = cur_node->children_[0];
+  //     NaliNode<T, P>* right_half_first_child =
+  //         cur_node->children_[cur_node->num_children_ / 2];
+  //     if (double_left_half &&
+  //         (1 << right_half_first_child->duplication_factor_) ==
+  //             cur_node->num_children_ / 2) {
+  //       // pull up right child if all children in the right half are the same
+  //       pull_up_right_child = true;
+  //       left_split = new (model_node_allocator().allocate(1))
+  //           model_node_type(cur_node->level_, allocator_);
+  //     } else if (!double_left_half &&
+  //                (1 << left_half_first_child->duplication_factor_) ==
+  //                    cur_node->num_children_ / 2) {
+  //       // pull up left child if all children in the left half are the same
+  //       pull_up_left_child = true;
+  //       right_split = new (model_node_allocator().allocate(1))
+  //           model_node_type(cur_node->level_, allocator_);
+  //     } else {
+  //       left_split = new (model_node_allocator().allocate(1))
+  //           model_node_type(cur_node->level_, allocator_);
+  //       right_split = new (model_node_allocator().allocate(1))
+  //           model_node_type(cur_node->level_, allocator_);
+  //     }
 
-    for (auto node : to_delete) {
-      delete_node(node);
-    }
+  //     // Do the split
+  //     NaliNode<T, P>* next_left_split = nullptr;
+  //     NaliNode<T, P>* next_right_split = nullptr;
+  //     if (double_left_half) {
+  //       // double left half
+  //       assert(left_split != nullptr);
+  //       if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
+  //         *new_parent = left_split;
+  //       }
+  //       left_split->num_children_ = cur_node->num_children_;
+  //       left_split->children_ =
+  //           new (pointer_allocator().allocate(left_split->num_children_))
+  //               NaliNode<T, P>*[left_split->num_children_];
+  //       left_split->model_.a_ = cur_node->model_.a_ * 2;
+  //       left_split->model_.b_ = cur_node->model_.b_ * 2;
+  //       int cur = 0;
+  //       while (cur < cur_node->num_children_ / 2) {
+  //         NaliNode<T, P>* cur_child = cur_node->children_[cur];
+  //         int cur_child_repeats = 1 << cur_child->duplication_factor_;
+  //         for (int i = 2 * cur; i < 2 * (cur + cur_child_repeats); i++) {
+  //           left_split->children_[i] = cur_child;
+  //         }
+  //         cur_child->duplication_factor_++;
+  //         cur += cur_child_repeats;
+  //       }
+  //       assert(cur == cur_node->num_children_ / 2);
 
-    return new_data_node;
-  }
+  //       if (pull_up_right_child) {
+  //         next_right_split = cur_node->children_[cur_node->num_children_ / 2];
+  //         next_right_split->level_ = cur_node->level_;
+  //       } else {
+  //         right_split->num_children_ = cur_node->num_children_ / 2;
+  //         right_split->children_ =
+  //             new (pointer_allocator().allocate(right_split->num_children_))
+  //                 NaliNode<T, P>*[right_split->num_children_];
+  //         right_split->model_.a_ = cur_node->model_.a_;
+  //         right_split->model_.b_ =
+  //             cur_node->model_.b_ - cur_node->num_children_ / 2;
+  //         int j = 0;
+  //         for (int i = cur_node->num_children_ / 2; i < cur_node->num_children_;
+  //              i++) {
+  //           right_split->children_[j] = cur_node->children_[i];
+  //           j++;
+  //         }
+  //         next_right_split = right_split;
+  //       }
+
+  //       int new_bucketID = path_node.bucketID * 2;
+  //       int repeats = 1 << (prev_left_split->duplication_factor_ + 1);
+  //       int start_bucketID =
+  //           new_bucketID -
+  //           (new_bucketID % repeats);  // first bucket with same child
+  //       int mid_bucketID = start_bucketID + repeats / 2;
+  //       int end_bucketID =
+  //           start_bucketID + repeats;  // first bucket with next child
+  //       for (int i = start_bucketID; i < mid_bucketID; i++) {
+  //         left_split->children_[i] = prev_left_split;
+  //       }
+  //       for (int i = mid_bucketID; i < end_bucketID; i++) {
+  //         left_split->children_[i] = prev_right_split;
+  //       }
+  //       next_left_split = left_split;
+  //     } else {
+  //       // double right half
+  //       assert(right_split != nullptr);
+  //       if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
+  //         *new_parent = right_split;
+  //       }
+  //       if (pull_up_left_child) {
+  //         next_left_split = cur_node->children_[0];
+  //         next_left_split->level_ = cur_node->level_;
+  //       } else {
+  //         left_split->num_children_ = cur_node->num_children_ / 2;
+  //         left_split->children_ =
+  //             new (pointer_allocator().allocate(left_split->num_children_))
+  //                 NaliNode<T, P>*[left_split->num_children_];
+  //         left_split->model_.a_ = cur_node->model_.a_;
+  //         left_split->model_.b_ = cur_node->model_.b_;
+  //         int j = 0;
+  //         for (int i = 0; i < cur_node->num_children_ / 2; i++) {
+  //           left_split->children_[j] = cur_node->children_[i];
+  //           j++;
+  //         }
+  //         next_left_split = left_split;
+  //       }
+
+  //       right_split->num_children_ = cur_node->num_children_;
+  //       right_split->children_ =
+  //           new (pointer_allocator().allocate(right_split->num_children_))
+  //               NaliNode<T, P>*[right_split->num_children_];
+  //       right_split->model_.a_ = cur_node->model_.a_ * 2;
+  //       right_split->model_.b_ =
+  //           (cur_node->model_.b_ - cur_node->num_children_ / 2) * 2;
+  //       int cur = cur_node->num_children_ / 2;
+  //       while (cur < cur_node->num_children_) {
+  //         NaliNode<T, P>* cur_child = cur_node->children_[cur];
+  //         int cur_child_repeats = 1 << cur_child->duplication_factor_;
+  //         int right_child_idx = cur - cur_node->num_children_ / 2;
+  //         for (int i = 2 * right_child_idx;
+  //              i < 2 * (right_child_idx + cur_child_repeats); i++) {
+  //           right_split->children_[i] = cur_child;
+  //         }
+  //         cur_child->duplication_factor_++;
+  //         cur += cur_child_repeats;
+  //       }
+  //       assert(cur == cur_node->num_children_);
+
+  //       int new_bucketID =
+  //           (path_node.bucketID - cur_node->num_children_ / 2) * 2;
+  //       int repeats = 1 << (prev_left_split->duplication_factor_ + 1);
+  //       int start_bucketID =
+  //           new_bucketID -
+  //           (new_bucketID % repeats);  // first bucket with same child
+  //       int mid_bucketID = start_bucketID + repeats / 2;
+  //       int end_bucketID =
+  //           start_bucketID + repeats;  // first bucket with next child
+  //       for (int i = start_bucketID; i < mid_bucketID; i++) {
+  //         right_split->children_[i] = prev_left_split;
+  //       }
+  //       for (int i = mid_bucketID; i < end_bucketID; i++) {
+  //         right_split->children_[i] = prev_right_split;
+  //       }
+  //       next_right_split = right_split;
+  //     }
+  //     assert(next_left_split != nullptr && next_right_split != nullptr);
+  //     if (verbose) {
+  //       std::cout << "[Splitting upwards through-node] level "
+  //                 << cur_node->level_ << ", node addr: " << path_node.node
+  //                 << ", node children: " << path_node.node->num_children_
+  //                 << ", child index: " << path_node.bucketID
+  //                 << ", child repeats in node: "
+  //                 << (1 << prev_left_split->duplication_factor_)
+  //                 << ", node repeats in parent: "
+  //                 << (1 << path_node.node->duplication_factor_)
+  //                 << ", new nodes addr: " << left_split << "," << right_split
+  //                 << std::endl;
+  //     }
+  //     to_delete.push_back(cur_node);
+  //     if (!pull_up_left_child && !pull_up_right_child) {
+  //       stats_.num_model_nodes++;
+  //     }
+  //     // This is the expected duplication factor; it will be correct once we
+  //     // split/expand the parent
+  //     next_left_split->duplication_factor_ = cur_node->duplication_factor_;
+  //     next_right_split->duplication_factor_ = cur_node->duplication_factor_;
+  //     prev_left_split = next_left_split;
+  //     prev_right_split = next_right_split;
+  //     path_idx--;
+  //   }
+
+  //   // Insert into the top node
+  //   const TraversalNode& top_path_node = traversal_path[path_idx];
+  //   model_node_type* top_node = top_path_node.node;
+  //   assert(top_node->level_ == stop_propagation_level);
+  //   if (path_idx == static_cast<int>(traversal_path.size()) - 1) {
+  //     *new_parent = top_node;
+  //   }
+  //   int top_bucketID = top_path_node.bucketID;
+  //   int repeats =
+  //       1 << prev_left_split->duplication_factor_;  // this was the duplication
+  //                                                   // factor of the child that
+  //                                                   // was deleted
+  //   if (verbose) {
+  //     std::cout << "[Splitting upwards top node] level "
+  //               << stop_propagation_level << ", node addr: " << top_node
+  //               << ", node children: " << top_node->num_children_
+  //               << ", child index: " << top_bucketID
+  //               << ", child repeats in node: " << repeats
+  //               << ", node repeats in parent: "
+  //               << (1 << top_node->duplication_factor_) << std::endl;
+  //   }
+
+  //   // Expand the top node if necessary
+  //   if (repeats == 1) {
+  //     stats_.num_model_node_expansions++;
+  //     stats_.num_model_node_expansion_pointers += top_node->num_children_;
+  //     top_node->expand(1);  // double size of top node
+  //     top_bucketID *= 2;
+  //     repeats *= 2;
+  //   } else {
+  //     prev_left_split->duplication_factor_--;
+  //     prev_right_split->duplication_factor_--;
+  //   }
+
+  //   int start_bucketID =
+  //       top_bucketID -
+  //       (top_bucketID % repeats);  // first bucket with same child
+  //   int mid_bucketID = start_bucketID + repeats / 2;
+  //   int end_bucketID =
+  //       start_bucketID + repeats;  // first bucket with next child
+  //   for (int i = start_bucketID; i < mid_bucketID; i++) {
+  //     top_node->children_[i] = prev_left_split;
+  //   }
+  //   for (int i = mid_bucketID; i < end_bucketID; i++) {
+  //     top_node->children_[i] = prev_right_split;
+  //   }
+
+  //   for (auto node : to_delete) {
+  //     delete_node(node);
+  //   }
+
+  //   return new_data_node;
+  // }
 
   /*** Delete ***/
 
