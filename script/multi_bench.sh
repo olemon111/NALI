@@ -64,8 +64,8 @@ function Run() {
 loadnum=390000000
 opnum=10000000
 scansize=4000000
-dbname="alexol"
-for thread in 16
+dbname="art"
+for thread in 32
 do
     Run $dbname $loadnum $opnum $scansize $thread
 done

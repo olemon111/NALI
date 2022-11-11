@@ -46,7 +46,11 @@ void bindCore(uint16_t core) {
  * NUMA node1 CPU(s):               16-31,48-63
 */
 static inline void init_numa_map() {
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 8; i++) {
+        numa_map[i] = 0;
+    }
+
+    for (int i = 8; i < 16; i++) {
         numa_map[i] = 0;
     }
 

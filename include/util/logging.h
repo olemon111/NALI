@@ -29,15 +29,15 @@
 
 //定义日志级别
 
-#define LOG_LEVEL_OFF 0
-#define LOG_LEVEL_FATAL 1
-#define LOG_LEVEL_ERROR 2
-#define LOG_LEVEL_INFO 3
-#define LOG_LEVEL_DEBUG 4
+#define NALI_LOG_LEVEL_OFF 0
+#define NALI_LOG_LEVEL_FATAL 1
+#define NALI_LOG_LEVEL_ERROR 2
+#define NALI_LOG_LEVEL_INFO 3
+#define NALI_LOG_LEVEL_DEBUG 4
 
-#define LOG_LEVEL LOG_LEVEL_INFO
+#define LOG_LEVEL NALI_LOG_LEVEL_INFO
 
-#if LOG_LEVEL >= LOG_LEVEL_FATAL
+#if LOG_LEVEL >= NALI_LOG_LEVEL_FATAL
 #define LOG_FATAL(format, ...)                                                                        \
   do {                                                                                                \
     GET_TIME                                                                                          \
@@ -49,7 +49,7 @@
 #define LOG_FATAL(format, ...)
 #endif
 
-#if LOG_LEVEL >= LOG_LEVEL_ERROR
+#if LOG_LEVEL >= NALI_LOG_LEVEL_ERROR
 #define LOG_ERROR(format, ...)                                                                        \
   do {                                                                                                \
     GET_TIME                                                                                          \
@@ -59,7 +59,7 @@
 #define LOG_ERROR(format, ...)
 #endif
 
-#if LOG_LEVEL >= LOG_LEVEL_INFO
+#if LOG_LEVEL >= NALI_LOG_LEVEL_INFO
 #define LOG_INFO(format, ...)                                                                             \
   do {                                                                                                    \
     GET_TIME                                                                                              \
@@ -70,7 +70,7 @@
 #define LOG_INFO(format, ...)
 #endif
 
-#if LOG_LEVEL >= LOG_LEVEL_DEBUG
+#if LOG_LEVEL >= NALI_LOG_LEVEL_DEBUG
 #define LOG_DEBUG(format, ...)                                                                            \
   do {                                                                                                    \
     GET_TIME                                                                                              \

@@ -311,17 +311,16 @@ template <class T, class P>
 class LogKV {
 public:
     LogKV(size_t thread_num) {
+      init_numa_map();
       for (size_t i = 0; i < thread_num; i++) {
         ppage_[i] = new PPage(i);
       }
-
-      init_numa_map();
     }
 
     char *insert(const T& key, const P& payload) {
       Pair_t<T, P> p(key, payload);
       p.set_op(INSERT);
-      p.set_version(log_version++);
+      // p.set_version(log_version++);
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata(); // update metadata

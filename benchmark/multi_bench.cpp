@@ -11,11 +11,59 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <x86intrin.h>
 
 #include "utils.h"
 #include "util/logging.h"
 #include "db_interface.h"
 #include "util/sosd_util.h"
+
+
+#define STATISTIC_PMEM_INFO 
+
+#ifdef STATISTIC_PMEM_INFO
+#include "nvdimm_counter.h"
+void intel_pin_start() {}
+void intel_pin_stop() {}
+struct device_discovery* nvdimms = nullptr;
+unsigned int nvdimm_cnt = 0;
+struct device_performance* nvdimm_counter_begin = nullptr;
+struct device_performance* nvdimm_counter_end = nullptr;
+
+static inline void pin_start(struct device_performance** perf_counter) {
+  nvdimm_init();
+  if (*perf_counter == nullptr) {
+    assert(nvdimm_cnt != 0);
+    *perf_counter = (device_performance*)malloc(sizeof(struct device_performance) * nvdimm_cnt);
+  }
+  get_nvdimm_counter(*perf_counter);
+  nvdimm_fini();
+  intel_pin_start();
+}
+
+static inline void pin_end(struct device_performance** perf_counter) {
+  intel_pin_stop();
+
+  nvdimm_init();
+  if (*perf_counter == nullptr) {
+    assert(nvdimm_cnt != 0);
+    *perf_counter = (device_performance*)malloc(sizeof(struct device_performance) * nvdimm_cnt);
+  }
+  get_nvdimm_counter(*perf_counter);
+  nvdimm_fini();
+}
+
+static inline void print_counter_change(const struct device_performance* perf_counter_begin, 
+    const struct device_performance* perf_counter_stop) {
+    for (int i = 0; i < nvdimm_cnt; i++) {
+      printf("pmem%d, bytes_read: %llx \n", i, perf_counter_stop[i].bytes_read - perf_counter_begin[i].bytes_read);
+      printf("pmem%d, host_reads: %llx \n", i, perf_counter_stop[i].host_reads - perf_counter_begin[i].host_reads);
+      printf("pmem%d, bytes_written: %llx \n", i, perf_counter_stop[i].bytes_written - perf_counter_begin[i].bytes_written);
+      printf("pmem%d, host_writes: %llx \n", i, perf_counter_stop[i].host_writes - perf_counter_begin[i].host_writes);
+      printf("-------------------------------\n");
+    }
+}
+#endif
 
 namespace nali {
 
@@ -45,7 +93,7 @@ void show_help(char* prog) {
 
 std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
-int thread_num = 1;
+int thread_num = 16;
 size_t LOAD_SIZE   = 390000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 10000000;
@@ -74,7 +122,7 @@ int main(int argc, char *argv[]) {
 
   int c;
   int opt_idx;
-  std::string  dbName= "fastfair";
+  std::string  dbName= "art";
   std::string  load_file= "";
   while ((c = getopt_long(argc, argv, "t:s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
@@ -121,11 +169,11 @@ int main(int argc, char *argv[]) {
       data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/lognormal.dat");
       break;
     default:
-      LOG_ERROR("not defined loads_type");
+      LOG_INFO("not defined loads_type");
       assert(false);
       break;
   }
-  
+
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
   Tree<size_t, char*> *real_db = nullptr;
@@ -138,17 +186,20 @@ int main(int argc, char *argv[]) {
   } else if (dbName == "art") {
     real_db = new nali::artdb<size_t, char*>();
   } else {
-    LOG_ERROR("not defined db: %s", dbName.c_str());
+    LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
   }
 
   Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_num);
 
   // db->get_depth_info();
-   
+
   // alexol must bulkload 10M/1M sorted kv
   {
-    int init_size = 10000000;
+    #ifdef STATISTIC_PMEM_INFO
+    pin_start(&nvdimm_counter_begin);
+    #endif
+    int init_size = 10;
     auto values = new std::pair<uint64_t, uint64_t>[init_size];
     size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need addd mix put size
     for (int i = 0; i < init_size; i++) {
@@ -157,22 +208,33 @@ int main(int argc, char *argv[]) {
     }
     std::sort(values, values + init_size,
               [](auto const& a, auto const& b) { return a.first < b.first; });
-    LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
+    LOG_INFO("@@@@ BULK LOAD START @@@@");
     nali::thread_id = 0; // thread0 do bulkload
     nali::bindCore(nali::thread_id);
     db->bulk_load(values, init_size);
-    LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
+    LOG_INFO("@@@@ BULK LOAD END @@@@");
+    #ifdef STATISTIC_PMEM_INFO
+    pin_end(&nvdimm_counter_end);
+    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+    #endif
   }
+
+  const size_t numa0_thread_num = thread_num;
+  const size_t numa1_thread_num = 0;
 
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
-    
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_start(&nvdimm_counter_begin);
+    #endif
+
     // Load
     auto ts = TIME_NOW;
     std::vector<std::thread> threads;
     std::atomic_int thread_id_count(0);
     size_t per_thread_size = LOAD_SIZE / thread_num;
-    for(int i = 0; i < thread_num; i ++) {
+    for(int i = 0; i < numa0_thread_num; i ++) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
             nali::thread_id = thread_id;
@@ -194,10 +256,40 @@ int main(int argc, char *argv[]) {
             }
         });
     }
+
+    atomic_int numa1_thread_id_count(16); // 另一个numa
+    for(int i = 0; i < numa1_thread_num; i ++) {
+        threads.emplace_back([&](){
+            int thread_id = numa1_thread_id_count.fetch_add(1);
+            nali::bindCore(thread_id);
+            nali::thread_id = thread_id - numa0_thread_num;
+            size_t start_pos = (thread_id-numa0_thread_num) * per_thread_size;
+            size_t size = (thread_id-16 == numa1_thread_num-1) ? LOAD_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
+            for (size_t j = 0; j < size; ++j) {
+                // std::cerr << "insert times: " << j  << "\n";
+                bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+                // if (!ret) {
+                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
+                //     assert(false);
+                // }
+
+                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
+                  std::cout << "Operate: " << j + 1 << std::endl;  
+                  // db->get_depth_info();
+                }
+            }
+        });
+    }
     for (auto& t : threads)
         t.join();
 
     auto te = TIME_NOW;
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_end(&nvdimm_counter_end);
+    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+    #endif
+
     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
     std::cout << "[Load]: Load " << LOAD_SIZE << ": " 
               << "cost " << use_seconds << "s, " 
@@ -205,13 +297,18 @@ int main(int argc, char *argv[]) {
   }
 
   {
-     // Put
+    // Put
     LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
     std::vector<std::thread> threads;
     std::atomic_int thread_id_count(0);
     size_t per_thread_size = PUT_SIZE / thread_num;
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_start(&nvdimm_counter_begin);
+    #endif
+    
     auto ts = TIME_NOW;
-    for(int i = 0; i < thread_num; i ++) {
+    for(int i = 0; i < numa0_thread_num; i ++) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
             nali::thread_id = thread_id;
@@ -228,10 +325,40 @@ int main(int argc, char *argv[]) {
             }
         });
     }
+
+    atomic_int numa1_thread_id_count(16); // 另一个numa
+    for(int i = 0; i < numa1_thread_num; i ++) {
+        threads.emplace_back([&](){
+            int thread_id = numa1_thread_id_count.fetch_add(1);
+            nali::bindCore(thread_id);
+            nali::thread_id = thread_id - numa0_thread_num;
+            size_t start_pos = (thread_id-numa0_thread_num) * per_thread_size + LOAD_SIZE;
+            size_t size = (thread_id-16 == numa1_thread_num-1) ? PUT_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
+            for (size_t j = 0; j < size; ++j) {
+                // std::cerr << "insert times: " << j  << "\n";
+                bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+                // if (!ret) {
+                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
+                //     assert(false);
+                // }
+
+                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
+                  std::cout << "Operate: " << j + 1 << std::endl;  
+                  // db->get_depth_info();
+                }
+            }
+        });
+    }
     for (auto& t : threads)
         t.join();
         
     auto te = TIME_NOW;
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_end(&nvdimm_counter_end);
+    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+    #endif
+
     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
     std::cout << "[Put]: Put " << PUT_SIZE << ": " 
               << "cost " << use_seconds << "s, " 
@@ -244,11 +371,18 @@ int main(int argc, char *argv[]) {
     std::vector<std::thread> threads;
     std::atomic_int thread_id_count(0);
     size_t per_thread_size = GET_SIZE / thread_num;
-    Random get_rnd(0, GET_SIZE-1);
-    for (size_t i = 0; i < GET_SIZE; ++i)
-        std::swap(data_base[i],data_base[get_rnd.Next()]);
+    Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+    for (size_t i = 0; i < GET_SIZE; ++i) {
+      int idx = get_rnd.Next();
+      std::swap(data_base[i], data_base[idx]);
+    }
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_start(&nvdimm_counter_begin);
+    #endif
+
     auto ts = TIME_NOW;
-    for (int i = 0; i < thread_num; ++i) {
+    for (int i = 0; i < numa0_thread_num; ++i) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
             nali::thread_id = thread_id;
@@ -257,21 +391,60 @@ int main(int argc, char *argv[]) {
             size_t size = (thread_id == thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             size_t value;
             int wrong_get = 0;
-            for (size_t j = 0; j < size; ++j) {
-                bool ret = db->search(data_base[start_pos+j], &value);
-                if (!ret || value != data_base[start_pos+j]) {
-                    // std::cout << "Get error!" << std::endl;
-                    wrong_get++;
-                }
-                if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
+            for (int t = 0; t < 1; t++) {
+              for (size_t j = 0; j < size; ++j) {
+                  bool ret;
+                  ret = db->search(data_base[start_pos+j], &value);
+                  
+                  if (!ret || value != data_base[start_pos+j]) {
+                      // std::cout << "Get error!" << std::endl;
+                      wrong_get++;
+                  }
+                  if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
+              }
             }
-            std::cout << "wrong get: " << wrong_get << std::endl;
+            if (wrong_get != 0)
+              std::cout << "thread " << thread_id << ", wrong get: " << wrong_get << std::endl;
         });
     }
+
+    atomic_int numa1_thread_id_count(16); // 另一个numa
+    for (int i = 0; i < numa1_thread_num; ++i) {
+        threads.emplace_back([&](){
+            int thread_id = numa1_thread_id_count.fetch_add(1);
+            nali::bindCore(thread_id);
+            nali::thread_id = thread_id - numa0_thread_num;
+            size_t start_pos = (thread_id-numa0_thread_num) *per_thread_size;
+            size_t size = (thread_id-16 == numa1_thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
+            size_t value;
+            int wrong_get = 0;
+            for (int t = 0; t < 1; t++) {
+              for (size_t j = 0; j < size; ++j) {
+                  bool ret;
+                  ret = db->search(data_base[start_pos+j], &value);
+                  
+                  if (!ret || value != data_base[start_pos+j]) {
+                      // std::cout << "Get error!" << std::endl;
+                      wrong_get++;
+                  }
+                  if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
+              }
+            }
+            if (wrong_get != 0)
+              std::cout << "thread " << thread_id << ", wrong get: " << wrong_get << std::endl;
+        });
+    }
+
     for (auto& t : threads)
         t.join();
         
     auto te = TIME_NOW;
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_end(&nvdimm_counter_end);
+    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+    #endif
+    
     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
     std::cout << "[Get]: Get " << GET_SIZE << ": " 
               << "cost " << use_seconds << "s, " 

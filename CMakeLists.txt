@@ -45,10 +45,11 @@ add_definitions(-DPMDK)
 # endif ()
 
 include_directories(include)
+include_directories(benchmark)
 include_directories(include/util)
 include_directories(src)
 include_directories(third)
-list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread)
+list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl)
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)

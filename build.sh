@@ -11,5 +11,5 @@ else
     cmake -DCMAKE_BUILD_TYPE=Release ..;
     # cmake -DCMAKE_BUILD_TYPE=Debug ..;
 fi
-make -j 4;
+make;
 cd ..;
