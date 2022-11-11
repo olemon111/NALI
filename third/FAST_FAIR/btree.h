@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "util/logging.h"
 // #include "util/allocator.h"
 
 using namespace std;
@@ -155,7 +156,11 @@ public:
 
   void *operator new(size_t size) {
     void *ret;
-    posix_memalign(&ret, 64, size);
+    int res = posix_memalign(&ret, 64, size);
+    if (res != 0) {
+      LOG_FATAL("alloc memory fail, %s", "fastfair");
+      exit(-1);
+    }
     // my_alloc::BasePMPool::AlignAllocate(&ret, size);
     return ret;
   }

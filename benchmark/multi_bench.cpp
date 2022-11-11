@@ -17,6 +17,17 @@
 #include "db_interface.h"
 #include "util/sosd_util.h"
 
+namespace nali {
+
+thread_local size_t thread_id = -1;
+int8_t numa_map[max_thread_num];
+std::atomic<size_t> log_version(0);
+
+}
+
+using KEY_TYPE = size_t;
+using VALUE_TYPE = size_t;
+
 #define TIME_NOW (std::chrono::high_resolution_clock::now())
 
 void show_help(char* prog) {
@@ -117,31 +128,29 @@ int main(int argc, char *argv[]) {
   
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
-  Tree<size_t, size_t> *db = nullptr;
-  if (dbName == "alex") {
-    // db = new nali::alexdb<size_t, size_t>();
-    assert(false);
-  } else if  (dbName == "alexol") {
-    db = new nali::alexoldb<size_t, size_t>();
+  Tree<size_t, char*> *real_db = nullptr;
+  if  (dbName == "alexol") {
+    real_db = new nali::alexoldb<size_t, char*>();
   } else if (dbName == "fastfair") {
-    db = new nali::fastfairdb<size_t, size_t>();
+    real_db = new nali::fastfairdb<size_t, char*>();
   } else if (dbName == "nali") {
-    db = new nali::nalidb<size_t, size_t>();
+    real_db = new nali::nalidb<size_t, char*>();
   } else if (dbName == "art") {
-    db = new nali::artdb<size_t, size_t>();
+    real_db = new nali::artdb<size_t, char*>();
   } else {
     LOG_ERROR("not defined db: %s", dbName.c_str());
     assert(false);
   }
 
+  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_num);
+
   // db->get_depth_info();
    
-  // 目前alex好像修好了这个bug，不必须bulkload了
-  if (true) {
-    int init_size = 50000000;
+  // alexol must bulkload 10M/1M sorted kv
+  {
+    int init_size = 10000000;
     auto values = new std::pair<uint64_t, uint64_t>[init_size];
-    size_t start_idx = 300000000;
-    // 加载后1亿的数据
+    size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need addd mix put size
     for (int i = 0; i < init_size; i++) {
       values[i].first = data_base[i+start_idx];
       values[i].second = data_base[i+start_idx];
@@ -149,6 +158,8 @@ int main(int argc, char *argv[]) {
     std::sort(values, values + init_size,
               [](auto const& a, auto const& b) { return a.first < b.first; });
     LOG_INFO("@@@@ ALEX BULK LOAD START @@@@");
+    nali::thread_id = 0; // thread0 do bulkload
+    nali::bindCore(nali::thread_id);
     db->bulk_load(values, init_size);
     LOG_INFO("@@@@ ALEX BULK LOAD END @@@@");
   }
@@ -164,6 +175,8 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < thread_num; i ++) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
+            nali::thread_id = thread_id;
+            nali::bindCore(nali::thread_id);
             size_t start_pos = thread_id * per_thread_size;
             size_t size = (thread_id == thread_num-1) ? LOAD_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             for (size_t j = 0; j < size; ++j) {
@@ -201,6 +214,8 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < thread_num; i ++) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
+            nali::thread_id = thread_id;
+            nali::bindCore(nali::thread_id);
             size_t start_pos = thread_id * per_thread_size + LOAD_SIZE;
             size_t size = (thread_id == thread_num-1) ? PUT_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             for (size_t j = 0; j < size; ++j) {
@@ -236,6 +251,8 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < thread_num; ++i) {
         threads.emplace_back([&](){
             int thread_id = thread_id_count.fetch_add(1);
+            nali::thread_id = thread_id;
+            nali::bindCore(nali::thread_id);
             size_t start_pos = thread_id *per_thread_size;
             size_t size = (thread_id == thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
             size_t value;

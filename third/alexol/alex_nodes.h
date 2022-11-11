@@ -384,7 +384,7 @@ public:
       kDefaultMaxDataNodeBytes_ /
       sizeof(V); // cannot expand beyond this number of key/data slots
 
-  double max_limit_ = 0;
+  double max_limit_ = 0; // zzy TODO， alexol对初始节点没有做这个
   double min_limit_ = 0;
   // double max_limit_ = std::numeric_limits<T>::lowest();
   // double min_limit_ = std::numeric_limits<T>::max();

@@ -1832,6 +1832,11 @@ public:
         // 4. Link to sibling node (Need redo upon reocvery)
         link_resizing_data_nodes(leaf, node);
 
+        if (parent == superroot_) {
+          root_node_ = node;
+          update_superroot_key_domain();
+        }
+
         node->release_lock();
         parent->release_read_lock();
 
@@ -1900,6 +1905,11 @@ public:
 
         // 4. Link to sibling node (Need redo upon reocvery)
         link_resizing_data_nodes(leaf, node);
+
+        if (parent == superroot_) {
+          root_node_ = node;
+          update_superroot_key_domain();
+        }
 
         node->release_lock();
         parent->release_read_lock();
@@ -2169,6 +2179,7 @@ public:
         parent_write_lock = true;
         int expansion_factor = 1 << (fanout_tree_depth - compute_duplication);
 
+        // 异地SMO
         model_node_type *new_node = new (model_node_allocator().allocate(1))
             model_node_type(static_cast<short>(parent->level_ + 1), allocator_);
         // Start the copy and expansion

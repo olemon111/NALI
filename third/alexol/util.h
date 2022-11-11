@@ -20,9 +20,9 @@ static bool FileExists(const char *pool_path) {
   return (stat(pool_path, &buffer) == 0);
 }
 
-#define LOG_FATAL(msg)      \
-  std::cout << msg << "\n"; \
-  exit(-1)
+// #define LOG_FATAL(msg)      \
+//   std::cout << msg << "\n"; \
+//   exit(-1)
 
 #define LOG(msg) std::cout << msg << "\n"
 

@@ -3,6 +3,7 @@
 #include "tree.h"
 #include "util/utils.h"
 #include "../src/nali.h"
+#include "../src/nali_kvlog.h"
 #include "../third/alexol/alex.h"
 // #include "../third/ALEX/alex.h"
 #include "../third/FAST_FAIR/btree.h"
@@ -13,6 +14,75 @@
 #include <utility>
 
 namespace nali {
+    template <class T, class P>
+    class logdb : public Tree<T, P> {
+        public:
+            typedef std::pair<T, P> V;
+            logdb(Tree <T, char*> *db, size_t thread_num) : db_(db) {
+                log_kv_ = new nali::LogKV<T, P>(thread_num);
+            }
+
+            ~logdb() {
+                delete db_;
+                delete log_kv_;
+            }
+
+            void bulk_load(const V values[], int num_keys) {
+                std::pair<T, char*> *t_values;
+                t_values = new std::pair<T, char*>[num_keys];
+                for (int i = 0; i < num_keys; i++) {
+                    char *res = log_kv_->insert(values[i].first, values[i].second);
+                    t_values[i].first = values[i].first;
+                    t_values[i].second = res;
+                }
+                db_->bulk_load(t_values, num_keys);
+                delete [] t_values;
+            }
+
+            bool insert(const T& key, const P& payload, bool epoch = false) {
+                char *res = log_kv_->insert(key, payload);
+                return db_->insert(key, res);
+            }
+
+            bool search(const T& key, P* payload, bool epoch = false) {
+                char *pmem_addr = nullptr;
+                bool ret = db_->search(key, &pmem_addr);
+                if (!ret)
+                    return ret;
+                *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                return ret;
+            }
+
+            bool erase(const T& key, bool epoch = false) {
+                log_kv_->erase(key);
+                return db_->erase(key);
+            }
+
+            bool update(const T& key, const P& payload, bool epoch = false) {
+                char *res = log_kv_->update(key, payload);
+                return db_->update(key, res);
+            }
+
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
+                std::pair<T, char*> *t_values;
+                t_values = new std::pair<T, char*>[to_scan];
+                int scan_size = db_->range_scan_by_size(key, to_scan, t_values, epoch);
+                for (int i = 0; i < scan_size; i++) {
+                    result[i].first = t_values[i].first;
+                    result[i].second = ((nali::Pair_t<T, P> *)t_values[i].second)->value();
+                }
+                return scan_size;
+            }
+
+            void get_depth_info() {
+                db_->get_depth_info();
+            }
+
+        private:
+            Tree<T, char*> *db_; // char* store nvm addr
+            nali::LogKV<T, P> *log_kv_;
+    };
+
     template <class T, class P>
     class nalidb : public Tree<T, P> {
         public:
@@ -92,72 +162,6 @@ namespace nali {
             shared_mutex_u8 rwlock;
     };
 
-    // template <class T, class P>
-    // class alexdb : public Tree<T, P> {
-    //     public:
-    //         typedef std::pair<T, P> V;
-    //         alexdb() {
-    //             db_ = new alex::Alex<T, P>();
-    //         }
-
-    //         ~alexdb() {
-    //             delete db_;
-    //         }
-
-    //         void bulk_load(const V values[], int num_keys) {
-    //             db_->bulk_load(values, num_keys);
-    //         }
-
-    //         bool insert(const T& key, const P& payload, bool epoch = false) {
-    //             return (db_->insert(key, payload)).second;
-    //         }
-
-    //         bool search(const T& key, P* payload, bool epoch = false) {
-    //             auto it = db_->find(key);
-    //             if (it == db_->end())
-    //                 return false;
-    //             else {
-    //                 *payload = it.payload();
-    //                 return true;
-    //             }
-    //         }
-
-    //         bool erase(const T& key, bool epoch = false) {
-    //             int num_erased = db_->erase(key);
-    //             if (0 == num_erased)
-    //                 return false; // not exist
-    //             return true;
-    //         }
-
-    //         bool update(const T& key, const P& payload, bool epoch = false) {
-    //             auto it = db_->find(key);
-    //             if (it == db_->end())
-    //                 return false; // not exist
-    //             it.payload() = payload;
-    //             return true;
-    //         }
-
-    //         int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
-    //             auto it = db_->find(key);
-    //             if (it == db_->end())
-    //                 return 0;
-    //             if (result == nullptr) {
-    //                 result = new V[to_scan];
-    //             }
-
-    //             uint32_t i = 0;
-    //             for (i = 0; i < to_scan && it != db_->end(); i++) {
-    //                 result[i] = *it;
-    //                 it++;
-    //             }
-    //             return i;
-    //         }
-
-    //         void get_depth_info() {}
-
-    //     private:
-    //         alex::Alex<T, P> *db_;
-    // };
     template <class T, class P>
     class alexoldb : public Tree<T, P> {
         public:
@@ -165,7 +169,7 @@ namespace nali {
             alexoldb() {
                 db_ = new alexol::Alex<T, P>();
                 db_->set_max_model_node_size(1 << 24);
-                db_->set_max_data_node_size(1 << 22);
+                db_->set_max_data_node_size(1 << 19);
             }
 
             ~alexoldb() {
@@ -272,7 +276,8 @@ namespace nali {
                     result = new V[scan];
                 }
                 for (int i = 0; i < scan; i++) {
-                    result[i] = res[i];
+                    result[i].first = res[i].first;
+                    result[i].second = (char*)res[i].second;
                 }
                 return scan;
             }

@@ -68,11 +68,13 @@ const uint32_t lockMask = ((uint32_t)1 << 31) - 1;
 const int counterMask = (1 << 10) - 1;
 
 void align_alloc(void **ptr, size_t size){
-  posix_memalign(ptr, 64, size);
+  int res = posix_memalign(ptr, 64, size);
+  assert(res == 0);
 }
 
 void align_zalloc(void **ptr, size_t size){
-  posix_memalign(ptr, 64, size);
+  int res = posix_memalign(ptr, 64, size);
+  assert(res == 0);
   memset(*ptr, 0, size);
 }
 
