@@ -20,6 +20,12 @@ using OP_VERSION = uint32_t;
 constexpr int OP_BITS = 2;
 constexpr int VERSION_BITS = sizeof(OP_VERSION) * 8 - OP_BITS;
 
+#define NALI_VERSION_SHARDS 256
+
+struct version_alloctor {
+  
+};
+
 #pragma pack(1) //使范围内结构体按1字节方式对齐
 template <typename KEY, typename VALUE>
 class Pair_t {

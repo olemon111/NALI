@@ -340,64 +340,67 @@ int main(int argc, char *argv[]) {
   {
      // Get
     LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
-    std::vector<std::thread> threads;
-    std::atomic_int thread_idx_count(0);
-    size_t per_thread_size = GET_SIZE / total_thread_num;
     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
     for (size_t i = 0; i < GET_SIZE; ++i) {
       int idx = get_rnd.Next();
       std::swap(data_base[i], data_base[idx]);
     }
 
-    #ifdef STATISTIC_PMEM_INFO
-    pin_start(&nvdimm_counter_begin);
-    #endif
+    for (int loop = 0; loop < 5; loop++) {
+      std::vector<std::thread> threads;
+      std::atomic_int thread_idx_count(0);
+      size_t per_thread_size = GET_SIZE / total_thread_num;
+      
+      #ifdef STATISTIC_PMEM_INFO
+      pin_start(&nvdimm_counter_begin);
+      #endif
 
-    auto ts = TIME_NOW;
-    for (int i = 0; i < thread_ids.size(); ++i) {
-        threads.emplace_back([&](){
-        int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_ids[idx];
-        nali::bindCore(nali::thread_id);
-        size_t size = (idx == thread_ids.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
-        size_t start_pos = idx * per_thread_size;
-            
-        int wrong_get = 0;
-        for (int t = 0; t < 1; t++) {
-          for (size_t j = 0; j < size; ++j) {
-            bool ret;
-            size_t value;
-            ret = db->search(data_base[start_pos+j], &value);
-            
-            if (!ret || value != data_base[start_pos+j]) {
-              // std::cout << "Get error!" << std::endl;
-              wrong_get++;
-            }
-            if(idx == 0 && (j + 1) % 100000 == 0) {
-              std::cerr << "Operate: " << j + 1 << '\r'; 
+      auto ts = TIME_NOW;
+      for (int i = 0; i < thread_ids.size(); ++i) {
+          threads.emplace_back([&](){
+          int idx = thread_idx_count.fetch_add(1); 
+          nali::thread_id = thread_ids[idx];
+          nali::bindCore(nali::thread_id);
+          size_t size = (idx == thread_ids.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+          size_t start_pos = idx * per_thread_size;
+              
+          int wrong_get = 0;
+          for (int t = 0; t < 1; t++) {
+            for (size_t j = 0; j < size; ++j) {
+              bool ret;
+              size_t value;
+              ret = db->search(data_base[start_pos+j], &value);
+              
+              if (!ret || value != data_base[start_pos+j]) {
+                // std::cout << "Get error!" << std::endl;
+                wrong_get++;
+              }
+              if(idx == 0 && (j + 1) % 100000 == 0) {
+                std::cerr << "Operate: " << j + 1 << '\r'; 
+              }
             }
           }
-        }
-        if (wrong_get != 0) {
-          std::cout << "thread " << nali::thread_id << ", wrong get: " << wrong_get << std::endl;
-        }
-      });
+          if (wrong_get != 0) {
+            std::cout << "thread " << nali::thread_id << ", wrong get: " << wrong_get << std::endl;
+          }
+        });
+      }
+
+      for (auto& t : threads)
+        t.join();
+          
+      auto te = TIME_NOW;
+
+      #ifdef STATISTIC_PMEM_INFO
+      pin_end(&nvdimm_counter_end);
+      print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+      #endif
+      
+      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+      std::cout << "[Get]: Get " << GET_SIZE << ": " 
+                << "cost " << use_seconds << "s, " 
+                << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
     }
-
-    for (auto& t : threads)
-      t.join();
-        
-    auto te = TIME_NOW;
-
-    #ifdef STATISTIC_PMEM_INFO
-    pin_end(&nvdimm_counter_end);
-    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-    #endif
-    
-    auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-    std::cout << "[Get]: Get " << GET_SIZE << ": " 
-              << "cost " << use_seconds << "s, " 
-              << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
   }
 
   util::FastRandom ranny(18);
