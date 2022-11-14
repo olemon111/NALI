@@ -6,10 +6,11 @@
 #include <atomic>
 
 #include "nali_alloc.h"
+#include "xxhash.h"
+#include "nali_cache.h"
 namespace nali {
 
 extern thread_local size_t thread_id;
-extern std::atomic<size_t> log_version; // FIXME(zzy): global version's overhead may too large?
 
 #define ROUND_UP(s, n) (((s) + (n)-1) & (~(n - 1))) // ?
 enum OP_t { TRASH, INSERT, DELETED, UPDATE }; // TRASH is for gc
@@ -19,12 +20,6 @@ const size_t MAX_KEY_LEN = 512;
 using OP_VERSION = uint32_t;
 constexpr int OP_BITS = 2;
 constexpr int VERSION_BITS = sizeof(OP_VERSION) * 8 - OP_BITS;
-
-#define NALI_VERSION_SHARDS 256
-
-struct version_alloctor {
-  
-};
 
 #pragma pack(1) //使范围内结构体按1字节方式对齐
 template <typename KEY, typename VALUE>
@@ -312,6 +307,17 @@ class __attribute__((aligned(64))) PPage {
     ppage_header header_;
 };
 
+#define NALI_VERSION_SHARDS 256
+// cacheline align
+struct __attribute__((__aligned__(64))) version_alloctor {
+  std::atomic<size_t> version_;
+  char padding_[56];
+  version_alloctor(): version_(0) {}
+  size_t get_version() {
+    return version_++;
+  }
+};
+
 // WAL, twice nvm write：1. append log，2. update ppage_metadata
 template <class T, class P>
 class LogKV {
@@ -323,30 +329,30 @@ public:
       }
     }
 
-    char *insert(const T& key, const P& payload) {
+    char *insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
       p.set_op(INSERT);
-      // p.set_version(log_version++);
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata(); // update metadata
       return log_addr;
     }
 
-    void erase(const T& key) {
+    void erase(const T& key, uint64_t hash_key) {
       Pair_t<T, P> p;
       p.set_key(key);
       p.set_op(DELETED);
-      p.set_version(log_version++);
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata();
     }
 
-    char *update(const T& key, const P& payload) {
+    char *update(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
       p.set_op(UPDATE);
-      p.set_version(log_version++);
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata();
@@ -355,6 +361,7 @@ public:
 
   private:
     PPage *ppage_[max_thread_num] = {0};
+    version_alloctor version_allocator_[NALI_VERSION_SHARDS];
 };
 
 }  // namespace nali

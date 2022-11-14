@@ -69,7 +69,6 @@ namespace nali {
 
 thread_local size_t thread_id = -1;
 int8_t numa_map[max_thread_num];
-std::atomic<size_t> log_version(0);
 
 }
 
@@ -218,7 +217,7 @@ int main(int argc, char *argv[]) {
     #endif
     int init_size = 10000000;
     auto values = new std::pair<uint64_t, uint64_t>[init_size];
-    size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need addd mix put size
+    size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need add mix put size
     for (int i = 0; i < init_size; i++) {
       values[i].first = data_base[i+start_idx];
       values[i].second = data_base[i+start_idx];

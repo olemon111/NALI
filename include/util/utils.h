@@ -18,6 +18,9 @@ namespace nali {
 //enable linear probing design
 #define HASH 1
 
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
 static constexpr const uint32_t kCacheLineSize = 64;
 
 static bool FileExists(const char *pool_path) {

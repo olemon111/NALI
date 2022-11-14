@@ -7,6 +7,8 @@
 #include "../third/alexol/alex.h"
 // #include "../third/ALEX/alex.h"
 #include "../third/FAST_FAIR/btree.h"
+#include "nali_cache.h"
+#include "util/xxhash.h"
 
 #include "../third/ARTSynchronized/OptimisticLockCoupling/Tree.h"
 #include"../third/ARTSynchronized/OptimisticLockCoupling/Tree.cpp"
@@ -20,6 +22,9 @@ namespace nali {
             typedef std::pair<T, P> V;
             logdb(Tree <T, char*> *db, const std::vector<int> &thread_ids) : db_(db) {
                 log_kv_ = new nali::LogKV<T, P>(thread_ids);
+                #ifdef USE_NALI_CACHE
+                cache_ = new nali::nali_lrucache<T, P>();
+                #endif
             }
 
             ~logdb() {
@@ -31,8 +36,10 @@ namespace nali {
                 std::pair<T, char*> *t_values;
                 t_values = new std::pair<T, char*>[num_keys];
                 for (int i = 0; i < num_keys; i++) {
-                    char *res = log_kv_->insert(values[i].first, values[i].second);
-                    t_values[i].first = values[i].first;
+                    T key = values[i].first;
+                    uint64_t key_hash_ = XXH3_64bits(&key, sizeof(key));
+                    char *res = log_kv_->insert(key, values[i].second, key_hash_);
+                    t_values[i].first = key;
                     t_values[i].second = res;
                 }
                 db_->bulk_load(t_values, num_keys);
@@ -40,29 +47,65 @@ namespace nali {
             }
 
             bool insert(const T& key, const P& payload, bool epoch = false) {
-                char *res = log_kv_->insert(key, payload);
-                return db_->insert(key, res);
+                const T kkk = key;
+                uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                char *res = log_kv_->insert(key, payload, key_hash);
+                bool ret = db_->insert(key, res);
+
+                #ifdef USE_NALI_CACHE
+                cache_->insert(key, payload, key_hash);
+                #endif
+
+                return ret;
             }
 
             bool search(const T& key, P* payload, bool epoch = false) {
+                #ifdef USE_NALI_CACHE
+                const T kkk = key;
+                uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                bool in_cache = cache_->search(key, payload, key_hash);
+                if (in_cache)
+                    return true;
+                #endif
+
                 char *pmem_addr = nullptr;
                 bool ret = db_->search(key, &pmem_addr);
                 if (!ret)
                     return ret;
                 *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+
+                #ifdef USE_NALI_CACHE
+                // if not exist in cache, put into cache
+                if (in_cache == false) {
+                    cache_->insert(key, *payload, key_hash);
+                }
+                #endif
                 return ret;
             }
 
             bool erase(const T& key, bool epoch = false) {
-                log_kv_->erase(key);
-                return db_->erase(key);
+                const T kkk = key;
+                uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                log_kv_->erase(key, key_hash);
+                bool ret = db_->erase(key);
+                #ifdef USE_NALI_CACHE
+                cache_->erase(key, key_hash);
+                #endif
+                return ret;
             }
 
             bool update(const T& key, const P& payload, bool epoch = false) {
-                char *res = log_kv_->update(key, payload);
-                return db_->update(key, res);
+                const T kkk = key;
+                uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                char *res = log_kv_->update(key, payload, key_hash);
+                bool ret = db_->update(key, res);
+                #ifdef USE_NALI_CACHE
+                cache_->update(key, payload, key_hash);
+                #endif
+                return ret;
             }
 
+            // scan not go through cache
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
                 std::pair<T, char*> *t_values;
                 t_values = new std::pair<T, char*>[to_scan];
@@ -81,6 +124,9 @@ namespace nali {
         private:
             Tree<T, char*> *db_; // char* store nvm addr
             nali::LogKV<T, P> *log_kv_;
+            #ifdef USE_NALI_CACHE
+            nali::nali_lrucache<T, P> *cache_;
+            #endif
     };
 
     template <class T, class P>
