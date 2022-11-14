@@ -310,10 +310,10 @@ class __attribute__((aligned(64))) PPage {
 template <class T, class P>
 class LogKV {
 public:
-    LogKV(size_t thread_num) {
+    LogKV(const std::vector<int> &thread_ids) {
       init_numa_map();
-      for (size_t i = 0; i < thread_num; i++) {
-        ppage_[i] = new PPage(i);
+      for (auto thread_id: thread_ids) {
+        ppage_[thread_id] = new PPage(thread_id);
       }
     }
 
@@ -348,7 +348,7 @@ public:
     }
 
   private:
-    PPage *ppage_[max_thread_num];
+    PPage *ppage_[max_thread_num] = {0};
 };
 
 }  // namespace nali

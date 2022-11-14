@@ -93,7 +93,8 @@ void show_help(char* prog) {
 
 std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
-int thread_num = 16;
+int numa0_thread_num = 16;
+int numa1_thread_num = 16;
 size_t LOAD_SIZE   = 390000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 10000000;
@@ -109,7 +110,9 @@ std::vector<T>load_data_from_osm(const std::string dataname)
 int main(int argc, char *argv[]) {
     static struct option opts[] = {
   /* NAME               HAS_ARG            FLAG  SHORTNAME*/
-    {"thread",          required_argument, NULL, 't'},
+    // {"thread",          required_argument, NULL, 't'},
+    {"numa0-thread",    required_argument, NULL, 0},
+    {"numa1-thread",    required_argument, NULL, 0},
     {"load-size",       required_argument, NULL, 0},
     {"put-size",        required_argument, NULL, 0},
     {"get-size",        required_argument, NULL, 0},
@@ -124,34 +127,37 @@ int main(int argc, char *argv[]) {
   int opt_idx;
   std::string  dbName= "art";
   std::string  load_file= "";
-  while ((c = getopt_long(argc, argv, "t:s:dh", opts, &opt_idx)) != -1) {
+  while ((c = getopt_long(argc, argv, "s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
       case 0:
         switch (opt_idx) {
-          case 0: thread_num = atoi(optarg); break;
-          case 1: LOAD_SIZE = atoi(optarg); break;
-          case 2: PUT_SIZE = atoi(optarg); break;
-          case 3: GET_SIZE = atoi(optarg); break;
-          case 4: dbName = optarg; break;
-          case 5: load_file = optarg; break;
-          case 6: Loads_type = atoi(optarg); break;
-          case 7: show_help(argv[0]); return 0;
+          case 0: numa0_thread_num = atoi(optarg); break;
+          case 1: numa1_thread_num = atoi(optarg); break;
+          case 2: LOAD_SIZE = atoi(optarg); break;
+          case 3: PUT_SIZE = atoi(optarg); break;
+          case 4: GET_SIZE = atoi(optarg); break;
+          case 5: dbName = optarg; break;
+          case 6: load_file = optarg; break;
+          case 7: Loads_type = atoi(optarg); break;
+          case 8: show_help(argv[0]); return 0;
           default: std::cerr << "Parse Argument Error!" << std::endl; abort();
         }
         break;
-      case 't': thread_num = atoi(optarg); break;
       case 'h': show_help(argv[0]); return 0;
       case '?': break;
       default:  std::cout << (char)c << std::endl; abort();
     }
   }
 
-  std::cout << "THREAD NUMBER:         " << thread_num << std::endl;
+  std::cout << "NUMA0 THREAD NUMBER:   " << numa0_thread_num << std::endl;
+  std::cout << "NUMA1 THREAD NUMBER:   " << numa1_thread_num << std::endl;
   std::cout << "LOAD_SIZE:             " << LOAD_SIZE << std::endl;
   std::cout << "PUT_SIZE:              " << PUT_SIZE << std::endl;
   std::cout << "GET_SIZE:              " << GET_SIZE << std::endl;
   std::cout << "DB  name:              " << dbName << std::endl;
   std::cout << "Workload:              " << load_file << std::endl;
+
+  const int total_thread_num = numa0_thread_num + numa1_thread_num;
 
   std::vector<uint64_t> data_base;
   switch (Loads_type)
@@ -190,7 +196,18 @@ int main(int argc, char *argv[]) {
     assert(false);
   }
 
-  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_num);
+  // generate thread_ids
+  assert(numa0_thread_num >= 0 && numa0_thread_num <=16);
+  assert(numa1_thread_num >= 0 && numa1_thread_num <=16);
+  std::vector<int> thread_ids;
+  for (int i = 0; i < numa0_thread_num; i++) {
+    thread_ids.push_back(i);
+  }
+  for (int i = 0; i < numa1_thread_num; i++) {
+    thread_ids.push_back(16+i);
+  }
+
+  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
 
   // db->get_depth_info();
 
@@ -199,7 +216,7 @@ int main(int argc, char *argv[]) {
     #ifdef STATISTIC_PMEM_INFO
     pin_start(&nvdimm_counter_begin);
     #endif
-    int init_size = 10;
+    int init_size = 10000000;
     auto values = new std::pair<uint64_t, uint64_t>[init_size];
     size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need addd mix put size
     for (int i = 0; i < init_size; i++) {
@@ -219,9 +236,6 @@ int main(int argc, char *argv[]) {
     #endif
   }
 
-  const size_t numa0_thread_num = thread_num;
-  const size_t numa1_thread_num = 0;
-
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
 
@@ -231,57 +245,35 @@ int main(int argc, char *argv[]) {
 
     // Load
     auto ts = TIME_NOW;
+
     std::vector<std::thread> threads;
-    std::atomic_int thread_id_count(0);
-    size_t per_thread_size = LOAD_SIZE / thread_num;
-    for(int i = 0; i < numa0_thread_num; i ++) {
-        threads.emplace_back([&](){
-            int thread_id = thread_id_count.fetch_add(1);
-            nali::thread_id = thread_id;
-            nali::bindCore(nali::thread_id);
-            size_t start_pos = thread_id * per_thread_size;
-            size_t size = (thread_id == thread_num-1) ? LOAD_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
-            for (size_t j = 0; j < size; ++j) {
-                // std::cerr << "insert times: " << j  << "\n";
-                bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                // if (!ret) {
-                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
-                //     assert(false);
-                // }
+    std::atomic_int thread_idx_count(0);
+    size_t per_thread_size = LOAD_SIZE / total_thread_num;
+    for(int i = 0; i < thread_ids.size(); i++) {
+      threads.emplace_back([&](){
+        int idx = thread_idx_count.fetch_add(1); 
+        nali::thread_id = thread_ids[idx];
+        nali::bindCore(nali::thread_id);
+        size_t size = (idx == thread_ids.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
+        size_t start_pos = idx * per_thread_size;
+        for (size_t j = 0; j < size; ++j) {
+          // std::cerr << "insert times: " << j  << "\n";
+          bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          // if (!ret) {
+          //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
+          //     assert(false);
+          // }
 
-                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
-                  std::cout << "Operate: " << j + 1 << std::endl;  
-                  // db->get_depth_info();
-                }
-            }
-        });
+          if(idx == 0 && (j + 1) % 10000000 == 0) {
+            std::cout << "Operate: " << j + 1 << std::endl;  
+            // db->get_depth_info();
+          }
+        }
+      });
     }
 
-    atomic_int numa1_thread_id_count(16); // 另一个numa
-    for(int i = 0; i < numa1_thread_num; i ++) {
-        threads.emplace_back([&](){
-            int thread_id = numa1_thread_id_count.fetch_add(1);
-            nali::bindCore(thread_id);
-            nali::thread_id = thread_id - numa0_thread_num;
-            size_t start_pos = (thread_id-numa0_thread_num) * per_thread_size;
-            size_t size = (thread_id-16 == numa1_thread_num-1) ? LOAD_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
-            for (size_t j = 0; j < size; ++j) {
-                // std::cerr << "insert times: " << j  << "\n";
-                bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                // if (!ret) {
-                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
-                //     assert(false);
-                // }
-
-                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
-                  std::cout << "Operate: " << j + 1 << std::endl;  
-                  // db->get_depth_info();
-                }
-            }
-        });
-    }
     for (auto& t : threads)
-        t.join();
+      t.join();
 
     auto te = TIME_NOW;
 
@@ -300,57 +292,37 @@ int main(int argc, char *argv[]) {
     // Put
     LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
     std::vector<std::thread> threads;
-    std::atomic_int thread_id_count(0);
-    size_t per_thread_size = PUT_SIZE / thread_num;
+    std::atomic_int thread_idx_count(0);
+    size_t per_thread_size = PUT_SIZE / total_thread_num;
 
     #ifdef STATISTIC_PMEM_INFO
     pin_start(&nvdimm_counter_begin);
     #endif
     
     auto ts = TIME_NOW;
-    for(int i = 0; i < numa0_thread_num; i ++) {
-        threads.emplace_back([&](){
-            int thread_id = thread_id_count.fetch_add(1);
-            nali::thread_id = thread_id;
-            nali::bindCore(nali::thread_id);
-            size_t start_pos = thread_id * per_thread_size + LOAD_SIZE;
-            size_t size = (thread_id == thread_num-1) ? PUT_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
-            for (size_t j = 0; j < size; ++j) {
-                auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                // if (ret != 1) {
-                //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
-                //     assert(0);
-                // }
-                if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
-            }
-        });
+
+    for(int i = 0; i < thread_ids.size(); i++) {
+      threads.emplace_back([&](){
+        int idx = thread_idx_count.fetch_add(1); 
+        nali::thread_id = thread_ids[idx];
+        nali::bindCore(nali::thread_id);
+        size_t size = (idx == thread_ids.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
+        size_t start_pos = idx * per_thread_size + LOAD_SIZE;
+        for (size_t j = 0; j < size; ++j) {
+          auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          // if (ret != 1) {
+          //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
+          //     assert(0);
+          // }
+          if(idx == 0 && (j + 1) % 100000 == 0) {
+            std::cerr << "Operate: " << j + 1 << '\r'; 
+          }
+        }
+      });
     }
 
-    atomic_int numa1_thread_id_count(16); // 另一个numa
-    for(int i = 0; i < numa1_thread_num; i ++) {
-        threads.emplace_back([&](){
-            int thread_id = numa1_thread_id_count.fetch_add(1);
-            nali::bindCore(thread_id);
-            nali::thread_id = thread_id - numa0_thread_num;
-            size_t start_pos = (thread_id-numa0_thread_num) * per_thread_size + LOAD_SIZE;
-            size_t size = (thread_id-16 == numa1_thread_num-1) ? PUT_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
-            for (size_t j = 0; j < size; ++j) {
-                // std::cerr << "insert times: " << j  << "\n";
-                bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-                // if (!ret) {
-                //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
-                //     assert(false);
-                // }
-
-                if(thread_id == 0 && (j + 1) % 10000000 == 0) {
-                  std::cout << "Operate: " << j + 1 << std::endl;  
-                  // db->get_depth_info();
-                }
-            }
-        });
-    }
     for (auto& t : threads)
-        t.join();
+      t.join();
         
     auto te = TIME_NOW;
 
@@ -369,8 +341,8 @@ int main(int argc, char *argv[]) {
      // Get
     LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
     std::vector<std::thread> threads;
-    std::atomic_int thread_id_count(0);
-    size_t per_thread_size = GET_SIZE / thread_num;
+    std::atomic_int thread_idx_count(0);
+    size_t per_thread_size = GET_SIZE / total_thread_num;
     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
     for (size_t i = 0; i < GET_SIZE; ++i) {
       int idx = get_rnd.Next();
@@ -382,61 +354,38 @@ int main(int argc, char *argv[]) {
     #endif
 
     auto ts = TIME_NOW;
-    for (int i = 0; i < numa0_thread_num; ++i) {
+    for (int i = 0; i < thread_ids.size(); ++i) {
         threads.emplace_back([&](){
-            int thread_id = thread_id_count.fetch_add(1);
-            nali::thread_id = thread_id;
-            nali::bindCore(nali::thread_id);
-            size_t start_pos = thread_id *per_thread_size;
-            size_t size = (thread_id == thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
+        int idx = thread_idx_count.fetch_add(1); 
+        nali::thread_id = thread_ids[idx];
+        nali::bindCore(nali::thread_id);
+        size_t size = (idx == thread_ids.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+        size_t start_pos = idx * per_thread_size;
+            
+        int wrong_get = 0;
+        for (int t = 0; t < 1; t++) {
+          for (size_t j = 0; j < size; ++j) {
+            bool ret;
             size_t value;
-            int wrong_get = 0;
-            for (int t = 0; t < 1; t++) {
-              for (size_t j = 0; j < size; ++j) {
-                  bool ret;
-                  ret = db->search(data_base[start_pos+j], &value);
-                  
-                  if (!ret || value != data_base[start_pos+j]) {
-                      // std::cout << "Get error!" << std::endl;
-                      wrong_get++;
-                  }
-                  if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
-              }
+            ret = db->search(data_base[start_pos+j], &value);
+            
+            if (!ret || value != data_base[start_pos+j]) {
+              // std::cout << "Get error!" << std::endl;
+              wrong_get++;
             }
-            if (wrong_get != 0)
-              std::cout << "thread " << thread_id << ", wrong get: " << wrong_get << std::endl;
-        });
-    }
-
-    atomic_int numa1_thread_id_count(16); // 另一个numa
-    for (int i = 0; i < numa1_thread_num; ++i) {
-        threads.emplace_back([&](){
-            int thread_id = numa1_thread_id_count.fetch_add(1);
-            nali::bindCore(thread_id);
-            nali::thread_id = thread_id - numa0_thread_num;
-            size_t start_pos = (thread_id-numa0_thread_num) *per_thread_size;
-            size_t size = (thread_id-16 == numa1_thread_num-1) ? GET_SIZE-(thread_num-1)*per_thread_size : per_thread_size;
-            size_t value;
-            int wrong_get = 0;
-            for (int t = 0; t < 1; t++) {
-              for (size_t j = 0; j < size; ++j) {
-                  bool ret;
-                  ret = db->search(data_base[start_pos+j], &value);
-                  
-                  if (!ret || value != data_base[start_pos+j]) {
-                      // std::cout << "Get error!" << std::endl;
-                      wrong_get++;
-                  }
-                  if(thread_id == 0 && (j + 1) % 100000 == 0) std::cerr << "Operate: " << j + 1 << '\r'; 
-              }
+            if(idx == 0 && (j + 1) % 100000 == 0) {
+              std::cerr << "Operate: " << j + 1 << '\r'; 
             }
-            if (wrong_get != 0)
-              std::cout << "thread " << thread_id << ", wrong get: " << wrong_get << std::endl;
-        });
+          }
+        }
+        if (wrong_get != 0) {
+          std::cout << "thread " << nali::thread_id << ", wrong get: " << wrong_get << std::endl;
+        }
+      });
     }
 
     for (auto& t : threads)
-        t.join();
+      t.join();
         
     auto te = TIME_NOW;
 
@@ -502,7 +451,7 @@ int main(int argc, char *argv[]) {
   // intel_pin_stop();
 
   // unit 测试
-  if (thread_num == 1) {
+  if (total_thread_num == 1) {
     // scan
     {
       LOG_INFO(" @@@@@@@@@@@@@ single thread scan @@@@@@@@@@@@@@@");

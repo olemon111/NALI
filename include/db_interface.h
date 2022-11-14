@@ -18,8 +18,8 @@ namespace nali {
     class logdb : public Tree<T, P> {
         public:
             typedef std::pair<T, P> V;
-            logdb(Tree <T, char*> *db, size_t thread_num) : db_(db) {
-                log_kv_ = new nali::LogKV<T, P>(thread_num);
+            logdb(Tree <T, char*> *db, const std::vector<int> &thread_ids) : db_(db) {
+                log_kv_ = new nali::LogKV<T, P>(thread_ids);
             }
 
             ~logdb() {
