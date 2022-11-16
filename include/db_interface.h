@@ -30,6 +30,9 @@ namespace nali {
             ~logdb() {
                 delete db_;
                 delete log_kv_;
+                #ifdef USE_NALI_CACHE
+                delete cache_;
+                #endif
             }
 
             void bulk_load(const V values[], int num_keys) {
@@ -135,6 +138,8 @@ namespace nali {
             typedef std::pair<T, P> V;
             nalidb() {
                 db_ = new nali::Nali<T, P>();
+                db_->set_max_model_node_size(1 << 24);
+                db_->set_max_data_node_size(1 << 18);
             }
 
             ~nalidb() {
@@ -146,26 +151,18 @@ namespace nali {
             }
 
             bool insert(const T& key, const P& payload, bool epoch = false) {
-                // rwlock.lock();
-                bool ret = db_->insert(key, payload);
-                // rwlock.unlock();
-                return ret;
+                return db_->insert(key, payload);
             }
 
             bool search(const T& key, P* payload, bool epoch = false) {
-                // rwlock.lock();
-                bool ret = db_->find(key, payload);
-                // rwlock.unlock();
+                auto ret = db_->get_payload(key, payload);
                 return ret;
             }
 
             bool erase(const T& key, bool epoch = false) {
-                // rwlock.lock();
-                int num_erased = db_->erase(key);
-                // rwlock.unlock();
-                if (0 == num_erased)
-                    return false; // not exist
-                return true;
+                int num = db_->erase(key);
+                if(num) return true; 
+                else return false;
             }
 
             bool update(const T& key, const P& payload, bool epoch = false) {
@@ -173,21 +170,8 @@ namespace nali {
             }
 
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
-                // auto it = db_->find(key);
-                // if (it == db_->end())
-                //     return 0;
-                // if (result == nullptr) {
-                //     result = new V[to_scan];
-                // }
-
-                // uint32_t i = 0;
-                // for (i = 0; i < to_scan && it != db_->end(); i++) {
-                //     result[i] = *it;
-                //     it++;
-                // }
-                // return i;
-                // todo: 不使用迭代器，nali内部实现
-                return true;
+                auto scan_size = db_->range_scan_by_size(key, static_cast<uint32_t>(to_scan), result);
+                return to_scan;
             }
 
             void get_depth_info() {
@@ -200,7 +184,7 @@ namespace nali {
                         << "num_sideways_splits: " << stat.num_sideways_splits << "\n"
                         << "num_model_node_expansions: " << stat.num_model_node_expansions << "\n"
                         << "num_model_node_splits: " << stat.num_model_node_splits << "\n";
-                std::cout << "root child nums: " << db_->get_root_children_nums() << "\n";
+                // std::cout << "root child nums: " << db_->get_root_children_nums() << "\n";
             }
 
         private:

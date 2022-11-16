@@ -337,6 +337,7 @@ int main(int argc, char *argv[]) {
   }
 
   {
+    // GET_SIZE = 200000000;
      // Get
     LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
