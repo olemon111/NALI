@@ -15,9 +15,9 @@
 
 #include "utils.h"
 #include "util/logging.h"
+#include "logdb.h"
 #include "db_interface.h"
 #include "util/sosd_util.h"
-
 
 #define STATISTIC_PMEM_INFO 
 
@@ -74,8 +74,6 @@ int8_t numa_map[max_thread_num];
 
 using KEY_TYPE = size_t;
 using VALUE_TYPE = size_t;
-
-#define TIME_NOW (std::chrono::high_resolution_clock::now())
 
 void show_help(char* prog) {
   std::cout <<
@@ -181,15 +179,15 @@ int main(int argc, char *argv[]) {
 
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
-  Tree<size_t, char*> *real_db = nullptr;
+  Tree<size_t, uint64_t> *real_db = nullptr;
   if  (dbName == "alexol") {
-    real_db = new nali::alexoldb<size_t, char*>();
+    real_db = new nali::alexoldb<size_t, uint64_t>();
   } else if (dbName == "fastfair") {
-    real_db = new nali::fastfairdb<size_t, char*>();
+    real_db = new nali::fastfairdb<size_t, uint64_t>();
   } else if (dbName == "nali") {
-    real_db = new nali::nalidb<size_t, char*>();
+    real_db = new nali::nalidb<size_t, uint64_t>();
   } else if (dbName == "art") {
-    real_db = new nali::artdb<size_t, char*>();
+    real_db = new nali::artdb<size_t, uint64_t>();
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
@@ -198,12 +196,15 @@ int main(int argc, char *argv[]) {
   // generate thread_ids
   assert(numa0_thread_num >= 0 && numa0_thread_num <=16);
   assert(numa1_thread_num >= 0 && numa1_thread_num <=16);
-  std::vector<int> thread_ids;
+  std::vector<std::vector<int>> thread_ids(nali::numa_max_node, vector<int>());
+  std::vector<int> thread_id_arr;
   for (int i = 0; i < numa0_thread_num; i++) {
-    thread_ids.push_back(i);
+    thread_ids[0].push_back(i);
+    thread_id_arr.push_back(i);
   }
   for (int i = 0; i < numa1_thread_num; i++) {
-    thread_ids.push_back(16+i);
+    thread_ids[1].push_back(16+i);
+    thread_id_arr.push_back(16+i);
   }
 
   Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
@@ -248,12 +249,12 @@ int main(int argc, char *argv[]) {
     std::vector<std::thread> threads;
     std::atomic_int thread_idx_count(0);
     size_t per_thread_size = LOAD_SIZE / total_thread_num;
-    for(int i = 0; i < thread_ids.size(); i++) {
+    for(int i = 0; i < thread_id_arr.size(); i++) {
       threads.emplace_back([&](){
         int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_ids[idx];
+        nali::thread_id = thread_id_arr[idx];
         nali::bindCore(nali::thread_id);
-        size_t size = (idx == thread_ids.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
+        size_t size = (idx == thread_id_arr.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size;
         for (size_t j = 0; j < size; ++j) {
           // std::cerr << "insert times: " << j  << "\n";
@@ -300,12 +301,12 @@ int main(int argc, char *argv[]) {
     
     auto ts = TIME_NOW;
 
-    for(int i = 0; i < thread_ids.size(); i++) {
+    for(int i = 0; i < thread_id_arr.size(); i++) {
       threads.emplace_back([&](){
         int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_ids[idx];
+        nali::thread_id = thread_id_arr[idx];
         nali::bindCore(nali::thread_id);
-        size_t size = (idx == thread_ids.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
+        size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size + LOAD_SIZE;
         for (size_t j = 0; j < size; ++j) {
           auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
@@ -356,12 +357,12 @@ int main(int argc, char *argv[]) {
       #endif
 
       auto ts = TIME_NOW;
-      for (int i = 0; i < thread_ids.size(); ++i) {
+      for (int i = 0; i < thread_id_arr.size(); ++i) {
           threads.emplace_back([&](){
           int idx = thread_idx_count.fetch_add(1); 
-          nali::thread_id = thread_ids[idx];
+          nali::thread_id = thread_id_arr[idx];
           nali::bindCore(nali::thread_id);
-          size_t size = (idx == thread_ids.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+          size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
           int wrong_get = 0;

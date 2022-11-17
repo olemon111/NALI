@@ -10,6 +10,8 @@
 #include "nali_cache.h"
 namespace nali {
 
+// #define USE_PROXY
+
 extern thread_local size_t thread_id;
 
 #define ROUND_UP(s, n) (((s) + (n)-1) & (~(n - 1))) // ?
@@ -322,21 +324,31 @@ struct __attribute__((__aligned__(64))) version_alloctor {
 template <class T, class P>
 class LogKV {
 public:
-    LogKV(const std::vector<int> &thread_ids) {
+    LogKV(const std::vector<std::vector<int>> &thread_ids) {
       init_numa_map();
-      for (auto thread_id: thread_ids) {
-        ppage_[thread_id] = new PPage(thread_id);
+      for (auto &thread_v : thread_ids) {
+        for (auto thread_id : thread_v) {
+          ppage_[thread_id] = new PPage(thread_id);
+        }
       }
     }
 
-    char *insert(const T& key, const P& payload, uint64_t hash_key) {
+    uint64_t insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
       p.set_op(INSERT);
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata(); // update metadata
-      return log_addr;
+
+      uint64_t addr = (uint64_t)log_addr;
+      #ifdef USE_PROXY
+      uint8_t numa_id = get_numa_id(nali::thread_id);
+      // res &= 0x00ffffffffffffff;
+      // res |= numa_id << 24;
+      memcpy(&addr, &numa_id, 1); // MSB store numa_id
+      #endif
+      return addr;
     }
 
     void erase(const T& key, uint64_t hash_key) {
@@ -349,14 +361,22 @@ public:
       ppage_[thread_id]->persist_metadata();
     }
 
-    char *update(const T& key, const P& payload, uint64_t hash_key) {
+    uint64_t update(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
       p.set_op(UPDATE);
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata();
-      return log_addr;
+
+      uint64_t addr = (uint64_t)log_addr;
+      #ifdef USE_PROXY
+      uint8_t numa_id = get_numa_id(nali::thread_id);
+      // res &= 0x00ffffffffffffff;
+      // res |= numa_id << 24;
+      memcpy(&addr, &numa_id, 1); // MSB store numa_id
+      #endif
+      return addr;
     }
 
   private:

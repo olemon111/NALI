@@ -20,6 +20,7 @@ namespace nali {
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
+#define TIME_NOW (std::chrono::high_resolution_clock::now())
 
 static constexpr const uint32_t kCacheLineSize = 64;
 
