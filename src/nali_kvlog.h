@@ -10,7 +10,7 @@
 #include "nali_cache.h"
 namespace nali {
 
-// #define USE_PROXY
+#define USE_PROXY
 
 extern thread_local size_t thread_id;
 
@@ -343,10 +343,10 @@ public:
 
       uint64_t addr = (uint64_t)log_addr;
       #ifdef USE_PROXY
-      uint8_t numa_id = get_numa_id(nali::thread_id);
-      // res &= 0x00ffffffffffffff;
-      // res |= numa_id << 24;
-      memcpy(&addr, &numa_id, 1); // MSB store numa_id
+      uint64_t numa_id = get_numa_id(nali::thread_id);
+      // addr &= 0x00ffffffffffffff;
+      addr |= numa_id << 56;
+      // memcpy(&addr, &numa_id, 1); // MSB store numa_id
       #endif
       return addr;
     }
@@ -371,10 +371,10 @@ public:
 
       uint64_t addr = (uint64_t)log_addr;
       #ifdef USE_PROXY
-      uint8_t numa_id = get_numa_id(nali::thread_id);
-      // res &= 0x00ffffffffffffff;
-      // res |= numa_id << 24;
-      memcpy(&addr, &numa_id, 1); // MSB store numa_id
+      uint64_t numa_id = get_numa_id(nali::thread_id);
+      // addr &= 0x00ffffffffffffff;
+      addr |= numa_id << 56;
+      // memcpy(&addr, &numa_id, 1); // MSB store numa_id
       #endif
       return addr;
     }

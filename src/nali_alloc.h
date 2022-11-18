@@ -67,7 +67,7 @@ static inline void init_numa_map() {
     }
 }
 
-static inline int get_numa_id(size_t thread_id) {
+static inline int8_t get_numa_id(size_t thread_id) {
     return numa_map[thread_id];
 }
 

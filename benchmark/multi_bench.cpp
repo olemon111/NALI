@@ -19,7 +19,7 @@
 #include "db_interface.h"
 #include "util/sosd_util.h"
 
-#define STATISTIC_PMEM_INFO 
+// #define STATISTIC_PMEM_INFO 
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"

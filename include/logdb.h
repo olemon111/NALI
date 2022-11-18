@@ -12,6 +12,12 @@ namespace nali {
 
 extern thread_local size_t thread_id;
 
+struct logdb_statistic {
+    #ifdef USE_PROXY
+    size_t remote_read_times;
+    #endif
+};
+
 #ifdef USE_PROXY
 extern thread_local size_t random_thread_id[numa_max_node]; 
 #endif
@@ -20,14 +26,16 @@ extern thread_local size_t random_thread_id[numa_max_node];
     template <class P>
     struct read_req {
         char *value_ptr;
+        std::atomic<int> user_cnt;
         bool is_ready;
         P *value;
-        read_req() : value_ptr(nullptr), is_ready(false), value(nullptr) {}
-        read_req(char *addr, P *paylaod) : value_ptr(addr), is_ready(false), value(paylaod) {}
+        read_req() : value_ptr(nullptr), is_ready(false), value(nullptr), user_cnt(2) {}
+        read_req(char *addr, P *paylaod) : value_ptr(addr), is_ready(false), value(paylaod), user_cnt(2) {}
         void set_req(char *addr, P *paylaod) {
             value_ptr = addr;
             is_ready = false;
             value_ptr = paylaod;
+            user_cnt = 2;
         }
     };
 #endif
@@ -100,7 +108,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 pmem_addr &= 0x00ffffffffffffff;
                 
                 #ifdef USE_PROXY
-                    if (numa_id == nali::thread_id) {
+                    if (numa_id == get_numa_id(nali::thread_id)) {
                         *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
                     } else {
                         // send read req to remote numa
@@ -109,30 +117,25 @@ extern thread_local size_t random_thread_id[numa_max_node];
                         auto time_begin = TIME_NOW;
                         // check is_ready
                         while (!req_->is_ready) {
-                            {
-                                // check read_req queue
-                                read_req<P> *req_ = nullptr;
-                                while (readreq_queue_[nali::thread_id].try_dequeue(req_)) {
-                                    if (!req_->is_ready) {
-                                        *(req_->value) = ((nali::Pair_t<T, P> *)req_->value_ptr)->value();
-                                        if (req_->is_ready = true)
-                                            delete req_;
-                                        else
-                                            req_->is_ready = true;
-                                    } else {
-                                        delete req_; // request thread has do read, cur thread need free the space
-                                    }
-                                }
-                            }
+                            check_read_queue(1);
                             // handle timeout
                             auto time_now = TIME_NOW;
-                            if (std::chrono::duration_cast<std::chrono::microseconds>(time_now - time_begin).count() > 0.5) {
-                                req_->is_ready = true;
-                                *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                            if (std::chrono::duration_cast<std::chrono::microseconds>(time_now - time_begin).count() > 0.4) {
+                                int cnt_before = 2;
+                                int cnt_after = 1;
+                                bool res = req_->user_cnt.compare_exchange_strong(cnt_before, cnt_after, std::memory_order_acquire);
+                                if (res == false) { 
+                                    while (!req_->is_ready) {
+                                        check_read_queue(1);
+                                    }
+                                    delete req_;
+                                } else { // do remote read self
+
+                                    *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                                }
                                 return ret;
                             }
                         }
-                        delete req_;
                     }
                     check_read_queue();
                 #else
@@ -202,19 +205,18 @@ extern thread_local size_t random_thread_id[numa_max_node];
 
         private:
             #ifdef USE_PROXY
-            void check_read_queue() {
+            void check_read_queue(int loop_times = 3) {
                 // check read_req queue
                 read_req<P> *req_ = nullptr;
-                while (readreq_queue_[nali::thread_id].try_dequeue(req_)) {
-                    if (!req_->is_ready) {
-                        *(req_->value) = ((nali::Pair_t<T, P> *)req_->value_ptr)->value();
-                        if (req_->is_ready = true)
-                            delete req_;
-                        else
-                            req_->is_ready = true;
+                while (loop_times-- && readreq_queue_[nali::thread_id].try_dequeue(req_)) {
+                    int cnt_before = 2;
+                    int cnt_after = 1;
+                    bool res = req_->user_cnt.compare_exchange_strong(cnt_before, cnt_after, std::memory_order_acquire);
+                    if (res == false) { // request is timeout
+                        delete req_;
                     } else {
-                        delete req_; // request thread has do read, cur thread need free the space
-                        req_ = nullptr;
+                        *(req_->value) = ((nali::Pair_t<T, P> *)(req_->value_ptr))->value();
+                        req_->is_ready = true;
                     }
                 }
             }
