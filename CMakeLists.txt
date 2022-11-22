@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.12)
 project(nali)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 include(FetchContent)
 include(ExternalProject)
 
-set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -O3 -march=native")
+set(MKL_LINK_DIRECTORY "/opt/intel/mkl/lib/intel64")
+set(MKL_INCLUDE_DIRECTORY "/opt/intel/mkl/include")
+
+# MK for RMI
+link_directories(${MKL_LINK_DIRECTORY})
+include_directories(${MKL_INCLUDE_DIRECTORY})
+
+set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -O3 -fopenmp -march=native")
 
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)

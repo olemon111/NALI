@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
 
   int c;
   int opt_idx;
-  std::string  dbName= "art";
+  std::string  dbName= "nali";
   std::string  load_file= "";
   while ((c = getopt_long(argc, argv, "s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
@@ -207,7 +207,8 @@ int main(int argc, char *argv[]) {
     thread_id_arr.push_back(16+i);
   }
 
-  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  // Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  Tree<KEY_TYPE, VALUE_TYPE> *db = real_db;
 
   // db->get_depth_info();
 
@@ -218,13 +219,17 @@ int main(int argc, char *argv[]) {
     #endif
     int init_size = 10000000;
     auto values = new std::pair<uint64_t, uint64_t>[init_size];
-    size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need add mix put size
+    // size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need add mix put size
+    size_t start_idx = 0;
     for (int i = 0; i < init_size; i++) {
       values[i].first = data_base[i+start_idx];
       values[i].second = data_base[i+start_idx];
     }
-    std::sort(values, values + init_size,
-              [](auto const& a, auto const& b) { return a.first < b.first; });
+    if (dbName != "nali") {
+      std::sort(values, values + init_size,
+        [](auto const& a, auto const& b) { return a.first < b.first; });
+    }
+
     LOG_INFO("@@@@ BULK LOAD START @@@@");
     nali::thread_id = 0; // thread0 do bulkload
     nali::bindCore(nali::thread_id);

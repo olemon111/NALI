@@ -18,9 +18,8 @@ namespace nali {
         public:
             typedef std::pair<T, P> V;
             nalidb() {
-                db_ = new nali::Nali<T, P>();
-                db_->set_max_model_node_size(1 << 24);
-                db_->set_max_data_node_size(1 << 18);
+                db_ = new nali::Nali();
+                db_->Init();
             }
 
             ~nalidb() {
@@ -28,48 +27,41 @@ namespace nali {
             }
 
             void bulk_load(const V values[], int num_keys) {
-                db_->bulk_load(values, num_keys);
+                // db_->bulk_load(values, num_keys);
+                for (int i = 0; i < num_keys; i++) {
+                    db_->Put(values[i].first, values[i].second);
+                }
             }
 
             bool insert(const T& key, const P& payload, bool epoch = false) {
-                return db_->insert(key, payload);
+                return db_->Put(key, payload);
             }
 
             bool search(const T& key, P* payload, bool epoch = false) {
-                auto ret = db_->get_payload(key, payload);
-                return ret;
+                return db_->Get(key, *payload); // FIXME()zzy?
             }
 
             bool erase(const T& key, bool epoch = false) {
-                int num = db_->erase(key);
-                if(num) return true; 
-                else return false;
+                return db_->Delete(key);
             }
 
             bool update(const T& key, const P& payload, bool epoch = false) {
-                return db_->update(key, payload);
+                return db_->Update(key, payload);
             }
 
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
-                auto scan_size = db_->range_scan_by_size(key, static_cast<uint32_t>(to_scan), result);
-                return to_scan;
+                // auto scan_size = db_->Scan(key, static_cast<int>(to_scan), result);
+                // return to_scan;
+                // TODO
+                assert(false);
+                return 0;
             }
 
             void get_depth_info() {
-                auto stat = db_->get_stats();
-                std::cout << "num_model_nodes: " << stat.num_model_nodes << "\n"
-                        << "num_data_nodes: " << stat.num_data_nodes << "\n"
-                        << "num_expand_and_scales: " << stat.num_expand_and_scales << "\n"
-                        << "num_expand_and_retrains: " << stat.num_expand_and_retrains << "\n"
-                        << "num_downward_splits: " << stat.num_downward_splits << "\n"
-                        << "num_sideways_splits: " << stat.num_sideways_splits << "\n"
-                        << "num_model_node_expansions: " << stat.num_model_node_expansions << "\n"
-                        << "num_model_node_splits: " << stat.num_model_node_splits << "\n";
-                // std::cout << "root child nums: " << db_->get_root_children_nums() << "\n";
             }
 
         private:
-            nali::Nali<T, P> *db_;
+            nali::Nali *db_;
             shared_mutex_u8 rwlock;
     };
 

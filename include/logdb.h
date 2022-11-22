@@ -197,6 +197,9 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 // check_read_queue();
                 // #endif
                 // return scan_size;
+                // TODO()zzy
+                assert(false);
+                return 0;
             }
 
             void get_depth_info() {
