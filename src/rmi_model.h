@@ -224,6 +224,11 @@ public:
       return stage_model_i;
     } 
 
+    inline void get_model_info(double &model_a, double &model_b) {
+      model_a = stage_1.a_;
+      model_b = stage_1.b_;
+    }
+
 private:
     stage_1_model_t stage_1;
     static const size_t linear_sample = 8;

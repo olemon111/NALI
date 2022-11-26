@@ -9,9 +9,14 @@
 #include "rmi_model.h"
 
 #define MULTI_THREAD
+// #define STASTISTIC_NALI_CDF
 
 namespace nali
 {
+    #ifdef STASTISTIC_NALI_CDF
+    extern size_t test_total_keys;
+    #endif
+
     class __attribute__((aligned(64))) Spinlock {
         public:
         void lock() {
@@ -30,10 +35,10 @@ namespace nali
     static const size_t min_entry_count = 64;
 
     /**
- * @brief 根模型，采用的是两层RMI模型，
- * 1. 目前实现需要首先 Load一定的数据作为初始化数据；
- * 2. EXPAND_ALL 宏定义控制采用每次扩展所有EntryGroup，还是采用重复指针一次扩展一个EntryGroup
- */
+     * @brief 根模型，采用的是两层RMI模型，
+     * 1. 目前实现需要首先 Load一定的数据作为初始化数据；
+     * 2. EXPAND_ALL 宏定义控制采用每次扩展所有EntryGroup，还是采用重复指针一次扩展一个EntryGroup
+     */
     class Nali;
     class __attribute__((aligned(64))) group
     {
@@ -109,6 +114,14 @@ namespace nali
         void Show();
 
         void Info();
+
+        size_t get_num_keys() {
+            size_t num_keys = 0;
+            for (int i = 0; i < nr_entries_; i++) {
+                num_keys += entry_space[i].get_num_keys();
+            }
+            return num_keys;
+        }
 
     private:
         int nr_entries_; // entry个数
@@ -676,6 +689,32 @@ namespace nali
 
         void Info() {
             std::cout << "root_expand_times : " << root_expand_times << std::endl;
+            std::cout << "total groups : " << nr_groups_ << std::endl;
+            #ifdef STASTISTIC_NALI_CDF
+            size_t num_keys = 0;
+            size_t cnt = 0;
+            size_t jump = test_total_keys / 10000;
+            for (int i = 0; i < nr_groups_; i++) {
+                group *group_ = &group_space[i];
+                size_t old_num_keys = num_keys;
+                size_t group_num_keys = group_->get_num_keys();
+                num_keys += group_num_keys;
+                double model_a = 0.0, model_b = 0.0;
+                group_->model.get_model_info(model_a, model_b);
+                size_t last_key = group_->min_key;
+                bool flag = false;
+                while (num_keys > cnt) {
+                    cnt += jump;
+                    std::cout << "cdf: " << "group#" << i << " min_key: " << last_key
+                    << " model_a: " << model_a << " model_b: " << model_b << std::endl;
+                    last_key += (group_num_keys/1.0/jump)/model_a;
+                    if (flag)
+                        std::cout << "*****" << std::endl;
+                    flag = true;
+                }
+                
+            }
+            #endif
         }
 
     private:

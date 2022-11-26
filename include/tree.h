@@ -20,5 +20,5 @@ class Tree {
   // Return #keys really scanned
   virtual int range_scan_by_size(const T&, uint32_t, V*& result, bool epoch = false) = 0;
 
-  virtual void get_depth_info() = 0;
+  virtual void get_info() = 0;
 };

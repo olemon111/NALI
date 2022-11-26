@@ -171,7 +171,7 @@ void Run(){
     index->bulk_load(values, init_num_keys);
     delete [] values;   
     std::cout << "End the bulk load" << std::endl;
-    index->get_depth_info();
+    index->get_info();
   }
 
   int i = init_num_keys;

@@ -202,8 +202,8 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return 0;
             }
 
-            void get_depth_info() {
-                db_->get_depth_info();
+            void get_info() {
+                db_->get_info();
             }
 
         private:

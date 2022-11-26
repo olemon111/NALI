@@ -164,6 +164,8 @@ namespace nali
         void SetInvalid() {}
         bool IsValid() { return false; }
 
+        uint16_t get_num_entries() { return entries; }
+
     private:
         
         struct kventry
@@ -666,13 +668,21 @@ namespace nali
         }
 
         /**
-     * @brief 根据key找到C层节点位置
-     * 
-     * @param key 
-     * @return int 
-     */
+         * @brief 根据key找到C层节点位置
+         * 
+         * @param key 
+         * @return int 
+         */
         //zzy: 线性查找,这里的IsValid()的意图是啥呢？优化成了二分查找
         int Find_pos(uint64_t key) const;
+
+        size_t get_num_keys() const {
+            size_t num_keys = 0;
+            for (int i = 0; i < buf.entries; i++) {
+                num_keys += entrys[i].pointer.pointer()->get_num_entries();
+            }
+            return num_keys;
+        }
         
         inline status Put(uint64_t key, uint64_t value, bool *split = nullptr)
         {

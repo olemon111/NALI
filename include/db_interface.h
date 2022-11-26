@@ -38,7 +38,7 @@ namespace nali {
             }
 
             bool search(const T& key, P* payload, bool epoch = false) {
-                return db_->Get(key, *payload); // FIXME()zzy?
+                return db_->Get(key, *payload); 
             }
 
             bool erase(const T& key, bool epoch = false) {
@@ -57,7 +57,8 @@ namespace nali {
                 return 0;
             }
 
-            void get_depth_info() {
+            void get_info() {
+                db_->Info();
             }
 
         private:
@@ -107,7 +108,7 @@ namespace nali {
                 return to_scan;
             }
 
-            void get_depth_info() {
+            void get_info() {
                 // std::cout << "dram use: " <<  \
                 //     (db_->model_size() + db_->data_size()) / 1024.0 / 1024.0 / 1024.0 << "GB" << std::endl;
                 auto stat = db_->get_stats();
@@ -185,7 +186,7 @@ namespace nali {
                 return scan;
             }
 
-            void get_depth_info() {}
+            void get_info() {}
 
         private:
             fastfair::btree *db_;
@@ -288,7 +289,7 @@ namespace nali {
                 // reinterpret_cast<KEY_TYPE *>(&key[0])[0] = swap_endian(valPtr->first);
             }
 
-            void get_depth_info() {
+            void get_info() {
             }
 
         private:

@@ -20,6 +20,7 @@
 #include "util/sosd_util.h"
 
 // #define STATISTIC_PMEM_INFO 
+// #define USE_BULKLOAD
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"
@@ -69,6 +70,10 @@ namespace nali {
 
 thread_local size_t thread_id = -1;
 int8_t numa_map[max_thread_num];
+
+#ifdef STASTISTIC_NALI_CDF
+size_t test_total_keys = 0;
+#endif
 
 }
 
@@ -210,8 +215,7 @@ int main(int argc, char *argv[]) {
   // Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
   Tree<KEY_TYPE, VALUE_TYPE> *db = real_db;
 
-  // db->get_depth_info();
-
+  #ifdef USE_BULKLOAD
   // alexol must bulkload 10M/1M sorted kv
   {
     #ifdef STATISTIC_PMEM_INFO
@@ -240,12 +244,17 @@ int main(int argc, char *argv[]) {
     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
     #endif
   }
+  #endif
 
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
 
     #ifdef STATISTIC_PMEM_INFO
     pin_start(&nvdimm_counter_begin);
+    #endif
+
+    #ifdef STASTISTIC_NALI_CDF
+    nali::test_total_keys = LOAD_SIZE;
     #endif
 
     // Load
@@ -271,7 +280,7 @@ int main(int argc, char *argv[]) {
 
           if(idx == 0 && (j + 1) % 10000000 == 0) {
             std::cout << "Operate: " << j + 1 << std::endl;  
-            // db->get_depth_info();
+            // db->get_info();
           }
         }
       });
@@ -292,6 +301,11 @@ int main(int argc, char *argv[]) {
               << "cost " << use_seconds << "s, " 
               << "iops " << (double)(LOAD_SIZE)/(double)use_seconds << " ." << std::endl;
   }
+
+  #ifdef STASTISTIC_NALI_CDF
+  db->get_info();
+  exit(0);
+  #endif
 
   {
     // Put
