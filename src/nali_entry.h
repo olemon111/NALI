@@ -16,6 +16,7 @@
 using namespace std;
 
 // #define USE_FINGER
+#define USE_UNSORT_BUNCKET
 
 #define bitScan(x) __builtin_ffs(x)
 #define countBit(x) __builtin_popcount(x)

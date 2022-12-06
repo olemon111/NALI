@@ -66,6 +66,31 @@ static inline void print_counter_change(const struct device_performance* perf_co
 }
 #endif
 
+// 实时获取程序占用的内存，单位：kb。
+size_t physical_memory_used_by_process()
+{
+    FILE* file = fopen("/proc/self/status", "r");
+    int result = -1;
+    char line[128];
+
+    while (fgets(line, 128, file) != nullptr) {
+        if (strncmp(line, "VmRSS:", 6) == 0) {
+            int len = strlen(line);
+
+            const char* p = line;
+            for (; std::isdigit(*p) == false; ++p) {}
+
+            line[len - 3] = 0;
+            result = atoi(p);
+
+            break;
+        }
+    }
+
+    fclose(file);
+    return result;
+}
+
 namespace nali {
 
 thread_local size_t thread_id = -1;
@@ -182,6 +207,9 @@ int main(int argc, char *argv[]) {
       break;
   }
 
+  size_t init_dram_space_use = physical_memory_used_by_process();
+  std::cout << "before newdb, dram space use: " << init_dram_space_use / 1024.0 /1024.0  << " GB" << std::endl;
+
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
   Tree<size_t, uint64_t> *real_db = nullptr;
@@ -280,6 +308,7 @@ int main(int argc, char *argv[]) {
 
           if(idx == 0 && (j + 1) % 10000000 == 0) {
             std::cout << "Operate: " << j + 1 << std::endl;  
+            std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
             // db->get_info();
           }
         }
@@ -300,6 +329,7 @@ int main(int argc, char *argv[]) {
     std::cout << "[Load]: Load " << LOAD_SIZE << ": " 
               << "cost " << use_seconds << "s, " 
               << "iops " << (double)(LOAD_SIZE)/(double)use_seconds << " ." << std::endl;
+    std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
   }
 
   #ifdef STASTISTIC_NALI_CDF
