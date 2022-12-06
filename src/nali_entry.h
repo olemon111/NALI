@@ -41,6 +41,565 @@ namespace nali
 
 #define USE_DELETE_0
 
+    /**
+     * @brief 有序的C层节点，
+     * 
+     * @tparam bucket_size 
+     * @tparam value_size 
+     * @tparam key_size 
+     * @tparam max_entry_count 
+     */
+    template <const size_t bucket_size = 256, const size_t value_size = 8, const size_t key_size = 8,
+              const size_t max_entry_count = 256>
+    class __attribute__((aligned(64))) SortBuncket
+    { // without SortBuncket main key
+        struct kventry;
+
+        size_t maxEntrys(int idx) const
+        {
+            return max_entries;
+        }
+
+        void *pkey(int idx) const
+        {
+            return (void *)&records[idx].key;
+        }
+
+        void *pvalue(int idx) const
+        {
+            return (void *)&records[idx].ptr;
+        }
+
+        // 插入一个KV对，仿照FastFair写的，先移动指针，再移动key
+        status PutBufKV(uint64_t new_key, uint64_t value, int &data_index, bool flush = true);
+
+#ifdef USE_DELETE_0
+        bool remove_key(uint64_t key, uint64_t *value);
+#else
+        bool remove_key(uint64_t key, uint64_t *value);
+#endif
+
+        status SetValue(int pos, uint64_t value)
+        {
+            memcpy(pvalue(pos), &value, value_size);
+            return status::OK;
+        }
+
+    public:
+        class BuncketIter;
+
+        SortBuncket(uint64_t key, int prefix_len) : entries(0), last_pos(0), next_bucket(nullptr)
+        {
+            next_bucket = nullptr;
+            max_entries = std::min(buf_size / (value_size + key_size), max_entry_count);
+            // std::cout << "Max Entry size is:" <<  max_entries << std::endl;
+        }
+
+        explicit SortBuncket(uint64_t key, uint64_t value, int prefix_len);
+
+        ~SortBuncket()
+        {
+        }
+
+        status Load(uint64_t *keys, uint64_t *values, int count);
+
+        // 节点分裂
+        status Expand_(SortBuncket *&next, uint64_t &split_key, int &prefix_len, char *old_finger = nullptr, char *new_finger = nullptr);
+        
+        SortBuncket *Next()
+        {
+            return next_bucket;
+        }
+
+        int Find(uint64_t target, bool &find) const;
+
+        int LinearFind(uint64_t target, bool &find) const
+        {
+            int i = 0;
+            for (; i < last_pos && target > records[i].key; i++)
+                ;
+            find = (i < last_pos) && (target == records[i].key);
+            return i;
+        }
+
+        uint64_t value(int idx) const
+        {
+            // the const bit mask will be generated during compile
+            return records[idx].ptr;
+        }
+
+        uint64_t key(int idx) const
+        {
+            return records[idx].key;
+        }
+
+        uint64_t min_key() const
+        {
+#ifdef USE_DELETE_0
+            for (int i = 0; records[i].key != 0; i++)
+            {
+                return records[0].key;
+            }
+#else
+            return records[0].key;
+#endif
+        }
+
+        status Put(uint64_t key, uint64_t value, char *fingerprint = nullptr);
+
+        status Update(uint64_t key, uint64_t value, char *fingerprint = nullptr);
+
+        status Get(uint64_t key, uint64_t &value, char*fingerprint) const;
+
+        status Scan(uint64_t start_key, int &len, std::vector<std::pair<uint64_t, uint64_t>> &results , bool if_first) const;
+
+        status Delete(uint64_t key, uint64_t *value, char*fingerprint);
+
+        uint16_t get_num_entries() { return entries; }
+
+        void Show() const
+        {
+            std::cout << "This: " << this << ", kventry count: " << entries << std::endl;
+            for (int i = 0; i < entries; i++)
+            {
+                std::cout << "key: " << key(i) << ", value: " << value(i) << std::endl;
+            }
+        }
+
+        uint64_t EntryCount() const
+        {
+            return entries;
+        }
+
+        void SetInvalid() {}
+        bool IsValid() { return false; }
+
+    private:
+        // Frist 8 byte head
+        struct kventry
+        {
+            uint64_t key;
+            uint64_t ptr;
+        };
+
+        const static size_t buf_size = bucket_size - (8 + 4);
+        const static size_t entry_size = (key_size + value_size);
+        const static size_t entry_count = (buf_size / entry_size);
+
+        SortBuncket *next_bucket;
+        union
+        {
+            uint32_t header;
+            struct
+            {
+                uint16_t last_pos : 8;    //最后一个位置
+                uint16_t entries : 8;     //键值对个数
+                uint16_t max_entries : 8; // MSB
+            };
+        };
+        // char buf[buf_size];
+        kventry records[entry_count];
+
+    public:
+        class BuncketIter
+        {
+        public:
+            BuncketIter() {}
+
+            BuncketIter(const SortBuncket *bucket, uint64_t prefix_key, uint64_t start_key)
+                : cur_(bucket), prefix_key(prefix_key)
+            {
+                if (unlikely(start_key <= prefix_key))
+                {
+                    idx_ = 0;
+                    return;
+                }
+                else
+                {
+                    bool find = false;
+                    idx_ = cur_->Find(start_key, find);
+                }
+            }
+
+            BuncketIter(const SortBuncket *bucket, uint64_t prefix_key)
+                : cur_(bucket), prefix_key(prefix_key)
+            {
+                idx_ = 0;
+            }
+
+            uint64_t key() const
+            {
+                return cur_->key(idx_);
+            }
+
+            uint64_t value() const
+            {
+                return cur_->value(idx_);
+            }
+
+            // return false if reachs end
+            bool next()
+            {
+                idx_++;
+                while (cur_->key(idx_) == 0 && idx_ < cur_->last_pos)
+                {
+                    idx_++;
+                }
+                if (idx_ >= cur_->last_pos)
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            bool end() const
+            {
+                return cur_ == nullptr ? true : (idx_ >= cur_->last_pos ? true : false);
+            }
+
+            bool operator==(const BuncketIter &iter) const { return idx_ == iter.idx_ && cur_ == iter.cur_; }
+            bool operator!=(const BuncketIter &iter) const { return idx_ != iter.idx_ || cur_ != iter.cur_; }
+
+        private:
+            uint64_t prefix_key;
+            const SortBuncket *cur_;
+            int idx_; // current index in node
+        };
+    };
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+              const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+             PutBufKV(uint64_t new_key, uint64_t value, int &data_index, bool flush)
+    {
+        if (entries >= max_entries)
+        {
+            return status::Full;
+        }
+        if (entries == 0)
+        { // this page is empty
+            records[0].key = new_key;
+            records[0].ptr = value;
+            records[1].ptr = 0;
+            return status::OK;
+        }
+        {
+            if (last_pos >= max_entries - 1 && last_pos != entries)
+            {
+                for (int i = last_pos - 1; i >= 0; i--)
+                {
+                    if (key(i) == 0)
+                    {
+                        for (; i < last_pos; i++)
+                        {
+                            records[i].ptr = records[i + 1].ptr;
+                            records[i].key = records[i + 1].key;
+                        }
+                        break;
+                    }
+                }
+                last_pos--;
+            }
+
+            int inserted = 0;
+            for (int i = last_pos - 1; i >= 0; i--)
+            {
+                if (new_key < records[i].key)
+                {
+                    records[i + 1].ptr = records[i].ptr;
+                    records[i + 1].key = records[i].key;
+                }
+                else
+                {
+                    records[i + 1].ptr = records[i].ptr;
+                    records[i + 1].key = new_key;
+                    records[i + 1].ptr = value;
+                    inserted = 1; // zzy: todo
+                    break;
+                }
+            }
+            if (inserted == 0)
+            {
+                records[0].key = new_key;
+                records[0].ptr = value;
+            }
+        }
+        return status::OK;
+    }
+
+#ifdef USE_DELETE_0
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+            const size_t max_entry_count>
+    bool SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            remove_key(uint64_t key, uint64_t *value)
+    {
+        for (int i = 0; records[i].key != 0 && i < last_pos; ++i)
+        {
+            if (records[i].key == key)
+            {
+                // simply set zero
+                records[i].key = 0;
+                records[i].ptr = 0;
+                return true;
+            }
+        }
+        return false;
+    }
+#else
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+            const size_t max_entry_count>
+    bool SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+        remove_key(uint64_t key, uint64_t *value)
+    {
+        bool shift = false;
+        int i;
+        for (i = 0; records[i].ptr != 0; ++i)
+        {
+            if (!shift && records[i].key == key)
+            {
+                if (value)
+                    *value = records[i].ptr;
+                if (i != 0)
+                {
+                    records[i].ptr = records[i - 1].ptr;
+                }
+                shift = true;
+            }
+
+            if (shift)
+            {
+                records[i].key = records[i + 1].key;
+                records[i].ptr = records[i + 1].ptr;
+                uint64_t records_ptr = (uint64_t)(&records[i]);
+                int remainder = records_ptr % CACHE_LINE_SIZE;
+                bool do_flush = (remainder == 0) ||
+                                ((((int)(remainder + sizeof(kventry)) / CACHE_LINE_SIZE) == 1) &&
+                                    ((remainder + sizeof(kventry)) % CACHE_LINE_SIZE) != 0);
+                if (do_flush)
+                {
+                    clflush((char *)records_ptr);
+                }
+            }
+        }
+        return shift;
+    }
+#endif
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+        SortBuncket(uint64_t key, uint64_t value, int prefix_len) : entries(0), last_pos(0), next_bucket(nullptr)
+    {
+        next_bucket = nullptr;
+        max_entries = std::min(buf_size / (value_size + key_size), max_entry_count);
+        // std::cout << "Max Entry size is:" <<  max_entries << std::endl;
+        Put(nullptr, key, value);
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+                Load(uint64_t *keys, uint64_t *values, int count)
+    {
+        assert(entries == 0 && count < max_entries);
+
+        for (int target_idx = 0; target_idx < count; target_idx++)
+        {
+            assert(pvalue(target_idx) > pkey(target_idx));
+            memcpy(pkey(target_idx), &keys[target_idx], key_size);
+            memcpy(pvalue(target_idx), &values[count - target_idx - 1], value_size);
+            entries++;
+            last_pos++;
+        }
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Expand_(SortBuncket *&next, uint64_t &split_key, int &prefix_len, char *old_finger, char *new_finger)
+    {
+        next = new SortBuncket(key(last_pos / 2), prefix_len);
+        // int idx = 0;
+        split_key = key(last_pos / 2);
+        prefix_len = 0;
+        int idx = 0;
+        int m = (int)ceil(last_pos / 2);
+        for (int i = m; i < last_pos; i++)
+        {
+            // next->Put(nullptr, key(i), value(i));
+            if (key(i) != 0)
+            {
+                next->PutBufKV(key(i), value(i), idx, false);
+                next->entries++;
+                next->last_pos++;
+            }
+        }
+        next->next_bucket = this->next_bucket;
+
+        records[m].ptr = 0;
+        this->next_bucket = next;
+
+        entries = entries - next->entries;
+        last_pos = m;
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    int SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Find(uint64_t target, bool &find) const
+    {
+        int left = 0;
+        int right = entries - 1;
+        while (left <= right)
+        {
+            int middle = (left + right) / 2;
+            uint64_t mid_key = key(middle);
+            if (mid_key == target)
+            {
+                find = true;
+                return middle;
+            }
+            else if (mid_key > target)
+            {
+                right = middle - 1;
+            }
+            else
+            {
+                left = middle + 1;
+            }
+        }
+        find = false;
+        return left;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Put(uint64_t key, uint64_t value, char *fingerprint)
+    {
+        status ret = status::OK;
+        int idx = 0;
+        ret = PutBufKV(key, value, idx);
+        if (ret != status::OK)
+        {
+            return ret;
+        }
+        entries++;
+        last_pos++;
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Update(uint64_t key, uint64_t value, char *fingerprint)
+    {
+        bool find = false;
+        int pos = Find(key, find);
+        if (!find || this->value(pos) == 0)
+        {
+            // Show();
+            return status::NoExist;
+        }
+        SetValue(pos, value);
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Get(uint64_t key, uint64_t &value, char*fingerprint) const
+    {
+        bool find = false;
+        // int pos = Find(key, find);
+        int pos = LinearFind(key, find);
+        if (!find || this->value(pos) == 0)
+        {
+            // Show();
+            //assert(0);
+            return status::NoExist;
+        }
+        value = this->value(pos);
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Scan(uint64_t start_key, int &len, std::vector<std::pair<uint64_t, uint64_t>> &results , bool if_first) const
+    {
+        int pos = 0;
+        if (start_key != 0)
+        {
+            bool find = false;
+            // int pos = Find(key, find);
+            int pos = LinearFind(start_key, find);
+            if (!find || this->value(pos) == 0)
+            {
+                return status::NoExist;
+            }
+        }
+        for (; pos < this->last_pos && len > 0; ++pos)
+        {
+            if (this->key(pos) != 0)
+            {
+                results.push_back({this->key(pos), this->value(pos)});
+                --len;
+            }
+        }
+        if (this->next_bucket == nullptr)
+        {
+            if (len > 0)
+            {
+                return status::Failed;
+            }
+            return status::OK;
+        }
+        SortBuncket *next_ = this->next_bucket;
+        while (len > 0)
+        {
+            int i = 0;
+            for (; i < next_->last_pos && len > 0; i++)
+            {
+                if (next_->key(i) != 0)
+                {
+                    results.push_back({next_->key(i), next_->value(i)});
+                    --len;
+                }
+            }
+            if (next_->next_bucket == nullptr)
+            {
+                break;
+            }
+            next_ = next_->next_bucket;
+        }
+        //cout << "in kventry:" << len << endl;
+        if (len > 0)
+        {
+            return status::Failed;
+        }
+        return status::OK;
+    }
+
+    template <const size_t bucket_size, const size_t value_size, const size_t key_size,
+        const size_t max_entry_count>
+    status SortBuncket<bucket_size, value_size, key_size, max_entry_count>::
+            Delete(uint64_t key, uint64_t *value, char*fingerprint)
+    {
+        auto ret = remove_key(key, value);
+        if (!ret)
+        {
+            return status::NoExist;
+        }
+        entries--;
+        return status::OK;
+    }
+
     template <const size_t bucket_size = 256, const size_t value_size = 8, const size_t key_size = 8,
               const size_t max_entry_count = 64>
     class __attribute__((aligned(64))) UnSortBuncket
@@ -552,7 +1111,11 @@ namespace nali
         return status::OK;
     }
 
+#ifdef USE_UNSORT_BUNCKET
     typedef UnSortBuncket<256, 8> buncket_t;
+#else
+    typedef SortBuncket<256, 8> buncket_t;
+#endif
     // c层节点的定义， C层节点需支持Put，Get，Update，Delete
     // C层节点内部需要实现一个Iter作为迭代器，
 

@@ -10,7 +10,7 @@
 #include "nali_cache.h"
 namespace nali {
 
-#define USE_PROXY
+// #define USE_PROXY
 
 extern thread_local size_t thread_id;
 

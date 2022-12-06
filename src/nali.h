@@ -10,6 +10,7 @@
 
 #define MULTI_THREAD
 // #define STASTISTIC_NALI_CDF
+#define USE_UNSORT_BUNCKET
 
 namespace nali
 {
