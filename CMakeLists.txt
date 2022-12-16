@@ -12,8 +12,9 @@ set(MKL_INCLUDE_DIRECTORY "/opt/intel/mkl/include")
 link_directories(${MKL_LINK_DIRECTORY})
 include_directories(${MKL_INCLUDE_DIRECTORY})
 
-set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -O3 -fopenmp -march=native")
+set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -march=native")
 
+add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)
 # message(STATUS "Persistence support: PMDK")
@@ -56,12 +57,16 @@ include_directories(benchmark)
 include_directories(include/util)
 include_directories(src)
 include_directories(third)
-list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl)
+list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa)
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)
 # target_link_libraries(benchmark PRIVATE ${libs_to_link})
 
-add_executable(multi_bench benchmark/multi_bench.cpp)            
-# add_dependencies(multi_bench PMDK)
-target_link_libraries(multi_bench PRIVATE ${libs_to_link})
+add_executable(nali_multi_bench benchmark/multi_bench.cpp)            
+# add_dependencies(nali_multi_bench PMDK)
+target_link_libraries(nali_multi_bench PRIVATE ${libs_to_link})
+
+# nvm_test
+add_executable(nvm_test background_test/nvm_test.cpp)            
+target_link_libraries(nvm_test PRIVATE ${libs_to_link})

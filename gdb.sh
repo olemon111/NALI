@@ -18,4 +18,4 @@ make;
 cd ..;
 
 
-sudo gdbserver localhost:9555 ./build/multi_bench
+sudo gdbserver localhost:9555 ./build/nali_multi_bench

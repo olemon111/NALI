@@ -124,7 +124,7 @@ int numa0_thread_num = 16;
 int numa1_thread_num = 16;
 size_t LOAD_SIZE   = 390000000;
 size_t PUT_SIZE    = 10000000;
-size_t GET_SIZE    = 10000000;
+size_t GET_SIZE    = 100000000;
 size_t DELETE_SIZE = 10000000;
 int Loads_type = 3;
 
@@ -175,6 +175,7 @@ int main(int argc, char *argv[]) {
       default:  std::cout << (char)c << std::endl; abort();
     }
   }
+  // numa1_thread_num = 0;
 
   std::cout << "NUMA0 THREAD NUMBER:   " << numa0_thread_num << std::endl;
   std::cout << "NUMA1 THREAD NUMBER:   " << numa1_thread_num << std::endl;
@@ -240,8 +241,8 @@ int main(int argc, char *argv[]) {
     thread_id_arr.push_back(16+i);
   }
 
-  // Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
-  Tree<KEY_TYPE, VALUE_TYPE> *db = real_db;
+  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  // Tree<KEY_TYPE, VALUE_TYPE> *db = real_db;
 
   #ifdef USE_BULKLOAD
   // alexol must bulkload 10M/1M sorted kv
@@ -387,7 +388,7 @@ int main(int argc, char *argv[]) {
   }
 
   {
-    // GET_SIZE = 200000000;
+    GET_SIZE = 200000000;
      // Get
     LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);

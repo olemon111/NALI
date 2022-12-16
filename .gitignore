@@ -1,6 +1,10 @@
 /build
 /script/*.txt
+/background_test/mlc_test/*.txt
+/background_test/mlc_test/origin_test/*.txt
 *.data
 .vscode
 log
 *.svg
+!/background_test/mlc_test/test.txt
+!/background_test/mlc_test/mlc

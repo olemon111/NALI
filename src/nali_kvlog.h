@@ -14,14 +14,19 @@ namespace nali {
 
 extern thread_local size_t thread_id;
 
-#define ROUND_UP(s, n) (((s) + (n)-1) & (~(n - 1))) // ?
-enum OP_t { TRASH, INSERT, DELETED, UPDATE }; // TRASH is for gc
+enum OP_t { INSERT, DELETED, UPDATE, TRASH }; // TRASH is for gc
 const size_t INVALID = UINT64_MAX;
 const size_t MAX_VALUE_LEN = 512;
 const size_t MAX_KEY_LEN = 512;
-using OP_VERSION = uint32_t;
+using OP_VERSION = uint64_t;
 constexpr int OP_BITS = 2;
 constexpr int VERSION_BITS = sizeof(OP_VERSION) * 8 - OP_BITS;
+
+struct last_log_offest {
+  uint16_t hash_num_;
+  uint16_t file_num_;
+  uint32_t log_offset_;
+};
 
 #pragma pack(1) //使范围内结构体按1字节方式对齐
 template <typename KEY, typename VALUE>
@@ -31,6 +36,8 @@ class Pair_t {
   OP_VERSION version : VERSION_BITS;
   KEY _key;
   VALUE _value;
+  last_log_offest _last_log_offset;
+
   Pair_t() {
     _key = 0;
     _value = 0;
@@ -71,6 +78,12 @@ class Pair_t {
   }
   void set_version(uint64_t old_version) { version = old_version + 1; }
   void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
+  void set_last_log_offest(uint16_t hash_num, uint16_t file_num, uint32_t offset) { 
+    _last_log_offset.hash_num_ = hash_num;
+    _last_log_offset.file_num_ = file_num;
+    _last_log_offset.log_offset_ = offset;
+  }
+
   OP_t get_op() { return static_cast<OP_t>(op); }
   void set_op_persist(OP_t o) {
     op = static_cast<uint16_t>(o);
@@ -78,7 +91,7 @@ class Pair_t {
   }
   // friend std::ostream &operator<<(std::ostream &out, Pair_t A);
   size_t size() {
-    auto total_length = sizeof(OP_VERSION) + sizeof(KEY) + sizeof(VALUE);
+    auto total_length = sizeof(OP_VERSION) + sizeof(KEY) + sizeof(VALUE) + sizeof(last_log_offest);
     return total_length;
   }
 };
@@ -301,7 +314,7 @@ class __attribute__((aligned(64))) PPage {
     }
 
     void persist_metadata() {
-      pmem_memcpy_persist(start_addr_, &header_, offsetof(ppage_header, sz_freed));
+      // pmem_memcpy_persist(start_addr_, &header_, offsetof(ppage_header, sz_freed));
     }
 
   private:
@@ -335,8 +348,9 @@ public:
 
     uint64_t insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
-      p.set_op(INSERT);
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_op(INSERT);
+      // p.set_last_log_offest(hash_key, )
       char *log_addr = ppage_[thread_id]->alloc(p.size());
       p.store_persist(log_addr);
       ppage_[thread_id]->persist_metadata(); // update metadata
