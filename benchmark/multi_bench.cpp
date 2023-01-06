@@ -175,7 +175,12 @@ int main(int argc, char *argv[]) {
       default:  std::cout << (char)c << std::endl; abort();
     }
   }
-  // numa1_thread_num = 0;
+
+  // numa0_thread_num = 0;
+  // numa1_thread_num = 1;
+  // LOAD_SIZE = 10000000;
+  // PUT_SIZE = 10000000;
+  // GET_SIZE = 10000000;
 
   std::cout << "NUMA0 THREAD NUMBER:   " << numa0_thread_num << std::endl;
   std::cout << "NUMA1 THREAD NUMBER:   " << numa1_thread_num << std::endl;
@@ -215,17 +220,18 @@ int main(int argc, char *argv[]) {
 
   Tree<size_t, uint64_t> *real_db = nullptr;
   if  (dbName == "alexol") {
-    real_db = new nali::alexoldb<size_t, uint64_t>();
+    // real_db = new nali::alexoldb<size_t, uint64_t>();
   } else if (dbName == "fastfair") {
-    real_db = new nali::fastfairdb<size_t, uint64_t>();
+    // real_db = new nali::fastfairdb<size_t, uint64_t>();
   } else if (dbName == "nali") {
     real_db = new nali::nalidb<size_t, uint64_t>();
   } else if (dbName == "art") {
-    real_db = new nali::artdb<size_t, uint64_t>();
+    // real_db = new nali::artdb<size_t, uint64_t>();
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
   }
+  assert(real_db);
 
   // generate thread_ids
   assert(numa0_thread_num >= 0 && numa0_thread_num <=16);
@@ -388,16 +394,16 @@ int main(int argc, char *argv[]) {
   }
 
   {
-    GET_SIZE = 200000000;
      // Get
-    LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
     for (size_t i = 0; i < GET_SIZE; ++i) {
       int idx = get_rnd.Next();
       std::swap(data_base[i], data_base[idx]);
     }
 
-    for (int loop = 0; loop < 5; loop++) {
+    LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
+
+    for (int loop = 0; loop < 1; loop++) {
       std::vector<std::thread> threads;
       std::atomic_int thread_idx_count(0);
       size_t per_thread_size = GET_SIZE / total_thread_num;
@@ -432,7 +438,7 @@ int main(int argc, char *argv[]) {
             }
           }
           if (wrong_get != 0) {
-            std::cout << "thread " << nali::thread_id << ", wrong get: " << wrong_get << std::endl;
+            std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
           }
         });
       }

@@ -45,7 +45,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
         public:
             typedef std::pair<T, P> V;
             logdb(Tree <T, uint64_t> *db, const std::vector<std::vector<int>> &thread_arr) : db_(db) {
-                log_kv_ = new nali::LogKV<T, P>(thread_arr);
+                log_kv_ = new nali::LogKV<T, P>();
                 thread_ids = thread_arr;
                 #ifdef USE_NALI_CACHE
                 cache_ = new nali::nali_lrucache<T, P>();
@@ -61,24 +61,25 @@ extern thread_local size_t random_thread_id[numa_max_node];
             }
 
             void bulk_load(const V values[], int num_keys) {
-                std::pair<T, uint64_t> *t_values;
-                t_values = new std::pair<T, uint64_t>[num_keys];
-                for (int i = 0; i < num_keys; i++) {
-                    T key = values[i].first;
-                    uint64_t key_hash_ = XXH3_64bits(&key, sizeof(key));
-                    uint64_t res = log_kv_->insert(key, values[i].second, key_hash_);
-                    t_values[i].first = key;
-                    t_values[i].second = res;
-                }
-                db_->bulk_load(t_values, num_keys);
-                delete [] t_values;
+                // std::pair<T, uint64_t> *t_values;
+                // t_values = new std::pair<T, uint64_t>[num_keys];
+                // for (int i = 0; i < num_keys; i++) {
+                //     T key = values[i].first;
+                //     uint64_t key_hash_ = XXH3_64bits(&key, sizeof(key));
+                //     uint64_t res = log_kv_->insert(key, values[i].second, key_hash_);
+                //     t_values[i].first = key;
+                //     t_values[i].second = res;
+                // }
+                // db_->bulk_load(t_values, num_keys);
+                // delete [] t_values;
             }
 
-            bool insert(const T& key, const P& payload, bool epoch = false) {
+            // dram index kv pair: <key, vlog's numa_id+file_num+offest>
+            bool insert(const T& key, const P& payload, const nali::last_log_offest *log_info = nullptr, char *log_addr = nullptr) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-                uint64_t res = log_kv_->insert(key, payload, key_hash);
-                bool ret = db_->insert(key, res);
+                uint64_t log_offset = log_kv_->insert(key, payload, key_hash);
+                bool ret = db_->insert(key, log_offset);
 
                 #ifdef USE_PROXY
                 check_read_queue();
@@ -91,21 +92,23 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            bool search(const T& key, P* payload, bool epoch = false) {
-                #ifdef USE_NALI_CACHE
+            bool search(const T& key, P* payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                
+                #ifdef USE_NALI_CACHE
                 bool in_cache = cache_->search(key, payload, key_hash);
                 if (in_cache)
                     return true;
                 #endif
 
-                uint64_t pmem_addr = 0;
-                bool ret = db_->search(key, &pmem_addr);
+                uint64_t addr_info = 0;
+                bool ret = db_->search(key, &addr_info);
                 if (!ret)
                     return ret;
-                int8_t numa_id = (pmem_addr >> 56) & 0xff;
-                pmem_addr &= 0x00ffffffffffffff;
+                last_log_offest log_info(addr_info);
+                int8_t numa_id = log_info.numa_id_;
+                uint64_t pmem_addr = reinterpret_cast<uint64_t>(log_kv_->get_addr(log_info, key_hash));
                 
                 #ifdef USE_PROXY
                     if (numa_id == get_numa_id(nali::thread_id)) {
@@ -151,10 +154,11 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            bool erase(const T& key, bool epoch = false) {
+            bool erase(const T& key, char *log_addr = nullptr) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-                log_kv_->erase(key, key_hash);
+                last_log_offest log_info;
+                char *log_offset = log_kv_->alloc_log(key_hash, log_info, 32); // TODO:var length log
                 bool ret = db_->erase(key);
 
                 #ifdef USE_PROXY
@@ -167,7 +171,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            bool update(const T& key, const P& payload, bool epoch = false) {
+            bool update(const T& key, const P& payload, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
                 uint64_t res = log_kv_->update(key, payload, key_hash);
@@ -185,7 +189,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
 
             // TODO(zzy) : range scan's proxy!
             // scan not go through cache
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr, bool epoch = false) {
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
                 // std::pair<T, uint64_t> *t_values = new std::pair<T, uint64_t>[to_scan];
                 // int scan_size = db_->range_scan_by_size(key, to_scan, t_values, epoch);
                 // for (int i = 0; i < scan_size; i++) {
@@ -226,7 +230,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
             #endif
 
         private:
-            Tree<T, uint64_t> *db_; // char* store nvm addr
+            Tree<T, uint64_t> *db_;
             nali::LogKV<T, P> *log_kv_;
             std::vector<std::vector<int>> thread_ids; // per_numa_ids
 

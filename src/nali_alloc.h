@@ -71,34 +71,4 @@ static inline int8_t get_numa_id(size_t thread_id) {
     return numa_map[thread_id];
 }
 
-static inline char *alloc_new_ppage(size_t thread_id, int32_t ppage_id, bool is_gcfile) {
-    // alloc numa local page
-    // if is gc thread file, file_name = nali_gc_$(thread_id)_$(ppage_id)
-    // else, file_name = nali_$(thread_id)_$(ppage_id)
-    int numa_id = get_numa_id(thread_id);
-    std::string file_name = "/mnt/pmem" + std::to_string(numa_id) + "/zzy/nali_";
-    if (is_gcfile) {
-        file_name += "gc_";
-    }
-    file_name += std::to_string(thread_id) + "_" + std::to_string(ppage_id);
-    if (FileExists(file_name.c_str())) {
-        std::cout << "nvm file exists " << file_name << std::endl;
-        exit(1);
-    }
-
-    size_t mapped_len;
-    int is_pmem;
-    void *ptr = nullptr;
-    if((ptr = pmem_map_file(file_name.c_str(), PPAGE_SIZE, PMEM_FILE_CREATE, 0666,
-                             &mapped_len, &is_pmem)) == NULL) {
-      std::cout << "mmap pmem file fail" << std::endl;
-      exit(1);
-    }
-
-    // init ppage metadata
-    pmem_memset_persist(ptr, 0, 64);
-
-    return (char*)ptr;
-}
-
 }

@@ -8,6 +8,7 @@
 #include "nali_alloc.h"
 #include "xxhash.h"
 #include "nali_cache.h"
+#include "rwlock.h"
 namespace nali {
 
 // #define USE_PROXY
@@ -22,10 +23,21 @@ using OP_VERSION = uint64_t;
 constexpr int OP_BITS = 2;
 constexpr int VERSION_BITS = sizeof(OP_VERSION) * 8 - OP_BITS;
 
+constexpr uint64_t numa_id_mask = (0xffffUL << 48);
+constexpr uint64_t ppage_id_mask = (0xffffUL << 32);
+constexpr uint64_t log_offset_mask = 0xffffffffUL;
 struct last_log_offest {
-  uint16_t hash_num_;
-  uint16_t file_num_;
-  uint32_t log_offset_;
+  uint16_t numa_id_; // last log's logfile numa id
+  uint16_t ppage_id_; // last log's logfile number
+  uint32_t log_offset_; // last log's in-logfile's offset
+  last_log_offest() : numa_id_(UINT16_MAX) {}; // set to UINT16_MAX to indicate it is first log
+  last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) : 
+      numa_id_(numa_id), ppage_id_(ppage_id), log_offset_(log_offset) {}
+  last_log_offest(uint64_t addr_info) : numa_id_((addr_info & numa_id_mask)>>48), 
+      ppage_id_((addr_info & ppage_id_mask)>>32), log_offset_(addr_info & log_offset_mask) {}
+  uint64_t to_uint64_t_offset() {
+    return (((uint64_t)numa_id_) << 48) | (((uint64_t)ppage_id_) << 32) | ((uint64_t)log_offset_);
+  }
 };
 
 #pragma pack(1) //使范围内结构体按1字节方式对齐
@@ -78,10 +90,10 @@ class Pair_t {
   }
   void set_version(uint64_t old_version) { version = old_version + 1; }
   void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
-  void set_last_log_offest(uint16_t hash_num, uint16_t file_num, uint32_t offset) { 
-    _last_log_offset.hash_num_ = hash_num;
-    _last_log_offset.file_num_ = file_num;
-    _last_log_offset.log_offset_ = offset;
+  void set_last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) { 
+    _last_log_offset.numa_id_ = numa_id;
+    _last_log_offset.ppage_id_ = ppage_id;
+    _last_log_offset.log_offset_ = log_offset;
   }
 
   OP_t get_op() { return static_cast<OP_t>(op); }
@@ -95,234 +107,97 @@ class Pair_t {
     return total_length;
   }
 };
-template <typename KEY>
-class Pair_t<KEY, std::string> {
- public:
-  OP_VERSION op : OP_BITS;
-  OP_VERSION version : VERSION_BITS;
-  KEY _key;
-  uint32_t _vlen;
-  std::string svalue;
-  Pair_t() {
-    op = 0;
-    version = 0;
-    _vlen = 0;
-    svalue.reserve(MAX_VALUE_LEN);
-  };
-  Pair_t(char *p) {
-    auto pt = reinterpret_cast<Pair_t *>(p);
-    _key = pt->_key;
-    op = pt->op;
-    version = pt->version;
-    _vlen = pt->_vlen;
-    svalue.assign(p + sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION),
-                  _vlen);
-  }
-  void load(char *p) {
-    auto pt = reinterpret_cast<Pair_t *>(p);
-    _key = pt->_key;
-    op = pt->op;
-    version = pt->version;
-    _vlen = pt->_vlen;
-    svalue.assign(p + sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION),
-                  _vlen);
-  }
-  size_t klen() { return sizeof(KEY); }
-  KEY *key() { return &_key; }
-  KEY str_key() { return _key; }
-  std::string str_value() { return svalue; }
 
-  Pair_t(KEY k, char *v_ptr, size_t vlen) : _vlen(vlen), version(0) {
-    _key = k;
-    svalue.assign(v_ptr, _vlen);
-  }
-  void set_key(KEY k) { _key = k; }
-  void store_persist(char *addr) {
-    auto p = reinterpret_cast<char *>(this);
-    auto len = sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &svalue[0], _vlen);
-    pmem_persist(addr, len + _vlen);
-  }
-  void store_persist_update(char *addr) {
-    auto p = reinterpret_cast<char *>(this);
-    auto len = sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &svalue[0], _vlen);
-    reinterpret_cast<Pair_t<KEY, std::string> *>(addr)->set_version(version);
-    pmem_persist(addr, len + _vlen);
-  }
-  void store(char *addr) {
-    auto p = reinterpret_cast<char *>(this);
-    auto len = sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &svalue[0], _vlen);
-  }
-  void set_empty() { _vlen = 0; }
-  void set_version(uint64_t old_version) { version = old_version + 1; }
-  void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
-  OP_t get_op() { return op; }
-  void set_op_persist(OP_t o) {
-    op = static_cast<uint16_t>(o);
-    pmem_persist(reinterpret_cast<char *>(this), 8);
-  }
-  size_t size() {
-    auto total_length =
-        sizeof(KEY) + sizeof(uint32_t) + sizeof(OP_VERSION) + _vlen;
-    return total_length;
-  }
-};
-
-template <>
-class Pair_t<std::string, std::string> {
- public:
-  OP_VERSION op : OP_BITS;
-  OP_VERSION version : VERSION_BITS;
-  uint32_t _klen;
-  uint32_t _vlen;
-  std::string skey;
-  std::string svalue;
-  Pair_t() {
-    op = 0;
-    version = 0;
-    _klen = 0;
-    _vlen = 0;
-    skey.reserve(MAX_KEY_LEN);
-    svalue.reserve(MAX_VALUE_LEN);
-  };
-  Pair_t(char *p) {
-    auto pt = reinterpret_cast<Pair_t *>(p);
-    op = pt->op;
-    version = pt->version;
-    _klen = pt->_klen;
-    _vlen = pt->_vlen;
-    skey.assign(p + 6, _klen);
-    svalue.assign(p + 6 + _klen, _vlen);
-  }
-  void load(char *p) {
-    auto pt = reinterpret_cast<Pair_t *>(p);
-    op = pt->op;
-    version = pt->version;
-    _klen = pt->_klen;
-    _vlen = pt->_vlen;
-    skey.assign(p + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(OP_VERSION),
-                _klen);
-    svalue.assign(
-        p + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(OP_VERSION) + _klen,
-        _vlen);
-  }
-  size_t klen() { return _klen; }
-  char *key() { return &skey[0]; }
-  std::string str_key() { return skey; }
-  std::string value() { return svalue; }
-
-  Pair_t(char *k_ptr, size_t klen, char *v_ptr, size_t vlen)
-      : _klen(klen), _vlen(vlen), version(0) {
-    skey.assign(k_ptr, _klen);
-    svalue.assign(v_ptr, _vlen);
-  }
-  void set_key(char *k_ptr, size_t kl) {
-    _klen = kl;
-    skey.assign(k_ptr, _klen);
-  }
-  void store_persist(char *addr) {
-    auto p = reinterpret_cast<void *>(this);
-    auto len = sizeof(uint32_t) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &skey[0], _klen);
-    memcpy(addr + len + _klen, &svalue[0], _vlen);
-    pmem_persist(addr, len + _klen + _vlen);
-  }
-  void store_persist_update(char *addr) {
-    auto p = reinterpret_cast<void *>(this);
-    auto len = sizeof(uint32_t) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &skey[0], _klen);
-    memcpy(addr + len + _klen, &svalue[0], _vlen);
-    reinterpret_cast<Pair_t<std::string, std::string> *>(addr)->set_version(
-        version);
-    pmem_persist(addr, len + _klen + _vlen);
-  }
-  void store(char *addr) {
-    auto p = reinterpret_cast<void *>(this);
-    auto len = sizeof(uint32_t) + sizeof(uint32_t) + sizeof(OP_VERSION);
-    memcpy(addr, p, len);
-    memcpy(addr + len, &skey[0], _klen);
-    memcpy(addr + len + _klen, &svalue[0], _vlen);
-  }
-  void set_empty() {
-    _klen = 0;
-    _vlen = 0;
-  }
-  void set_version(uint64_t old_version) { version = old_version + 1; }
-  void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
-  OP_t get_op() { return static_cast<OP_t>(op); }
-  void set_op_persist(OP_t o) {
-    op = static_cast<uint16_t>(o);
-    pmem_persist(reinterpret_cast<char *>(this), 8);
-  }
-
-  size_t size() {
-    auto total_length = sizeof(uint32_t) + sizeof(uint32_t) +
-                        sizeof(OP_VERSION) + _klen + _vlen;
-    return total_length;
-  }
-};
 #pragma pack()
 
 /**
- * PPage structure:
- * |-------------------------64B----------------------------|--sizeof(ppage)-64B--|
- * | ppage_id | core_id | sz_freed | sz_allocated | padding |       kv_log        |
- * 
  * kv_log structure:
- * | op | version | key | value| or
- * | op | version | key | vlen | value| or
- * | op | version | klen | key | vlen | value|
+ * | op | version | key | value| last_log_offset| or
+ * | op | version | key | vlen | value| last_log_offset| or
+ * | op | version | klen | key | vlen | value| last_log_offset|
 */
 
+#define NALI_VERSION_SHARDS 256
+
+// need a table to store all old logfile's start offset
+//  need query the table to get real offset
+struct global_ppage_meta {
+  char *start_addr_arr_[numa_node_num][NALI_VERSION_SHARDS][64]; // numa_id + hash_id + page_id -> mmap_addr
+};
+global_ppage_meta *g_ppage_s_addr_arr_;
+
 struct ppage_header {
-  int32_t ppage_id;
-  int32_t core_id;
+  size_t numa_id; // logfile's numa id
+  size_t hash_id_; // logfile's hash bucket number
+  size_t ppage_id; // logfile's pageid
   size_t sz_allocated; // only for alloc
   size_t sz_freed; // only for gc, never modified by foreground thread
-  bool is_using;
-  ppage_header() : ppage_id(-1), core_id(-1), sz_allocated(64), sz_freed(0) {}
+  SpinLatch rwlock; // protect foreground write and background gc
+  ppage_header() : ppage_id(-1), sz_allocated(0), sz_freed(0) {}
 };
 
+// in dram, metadata for ppage
 class __attribute__((aligned(64))) PPage {
   public:
-    PPage(size_t t_id) {
-      start_addr_ = alloc_new_ppage(t_id, header_.ppage_id+1, false);
-      header_.ppage_id = 0;
-      header_.core_id = t_id;
-      persist_metadata();
+    PPage(size_t numa_id, size_t hash_id) {
+      header_.numa_id = numa_id;
+      header_.hash_id_ = hash_id;
+      header_.ppage_id++;
+      start_addr_ = alloc_new_ppage(numa_id, hash_id, header_.ppage_id);
     }
 
     // if space is not enough, need create a new ppage
-    char *alloc(size_t alloc_size) {
+    char *alloc(last_log_offest &log_info, size_t alloc_size) {
+      header_.rwlock.WLock();
       if (alloc_size > PPAGE_SIZE - header_.sz_allocated) {
-        start_addr_ = alloc_new_ppage(header_.core_id, header_.ppage_id+1, false);
         header_.ppage_id++;
-        header_.sz_allocated = 64;
+        start_addr_ = alloc_new_ppage(header_.numa_id, header_.hash_id_, header_.ppage_id);
+        header_.sz_allocated = 0;
         header_.sz_freed = 0;
       }
 
+      log_info.numa_id_ = header_.numa_id;
+      log_info.ppage_id_ = header_.ppage_id;
+      log_info.log_offset_ = header_.sz_allocated;
+
       char *ret = start_addr_ + header_.sz_allocated;
       header_.sz_allocated += alloc_size;
+
+      header_.rwlock.WUnlock();
       return ret;
     }
 
-    void persist_metadata() {
-      // pmem_memcpy_persist(start_addr_, &header_, offsetof(ppage_header, sz_freed));
+    char *alloc_new_ppage(size_t numa_id, int32_t hash_id, int32_t ppage_id) {
+      // alloc numa local page, file_name = nali_$(numa_id)_$(hash_id)_$(ppage_id)
+      std::string file_name = "/mnt/pmem" + std::to_string(numa_id) + "/zzy/nali_";
+      file_name += std::to_string(numa_id) + "_" + std::to_string(hash_id) + "_" + std::to_string(ppage_id);
+      if (FileExists(file_name.c_str())) {
+          std::cout << "nvm file exists " << file_name << std::endl;
+          exit(1);
+      }
+
+      size_t mapped_len;
+      int is_pmem;
+      void *ptr = nullptr;
+      if((ptr = pmem_map_file(file_name.c_str(), PPAGE_SIZE, PMEM_FILE_CREATE, 0666,
+                              &mapped_len, &is_pmem)) == NULL) {
+        std::cout << "mmap pmem file fail" << std::endl;
+        exit(1);
+      }
+
+      // init ppage, all bits are 1
+      pmem_memset_persist(ptr, 0xffffffff, PPAGE_SIZE);
+
+      g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][ppage_id] = reinterpret_cast<char*>(ptr);
+
+      return reinterpret_cast<char*>(ptr);
     }
 
-  private:
+  public:
     char *start_addr_; // ppage start addr
     ppage_header header_;
 };
 
-#define NALI_VERSION_SHARDS 256
 // cacheline align
 struct __attribute__((__aligned__(64))) version_alloctor {
   std::atomic<size_t> version_;
@@ -333,68 +208,73 @@ struct __attribute__((__aligned__(64))) version_alloctor {
   }
 };
 
-// WAL, twice nvm write：1. append log，2. update ppage_metadata
+// WAL, only once nvm write
 template <class T, class P>
 class LogKV {
 public:
-    LogKV(const std::vector<std::vector<int>> &thread_ids) {
+    LogKV() {
       init_numa_map();
-      for (auto &thread_v : thread_ids) {
-        for (auto thread_id : thread_v) {
-          ppage_[thread_id] = new PPage(thread_id);
+      g_ppage_s_addr_arr_ = new global_ppage_meta();
+      // for each numa node, create log files
+      for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+        for (int hash_id = 0; hash_id < NALI_VERSION_SHARDS; hash_id++) {
+          PPage *ppage = new PPage(numa_id, hash_id);;
+          ppage_[numa_id][hash_id] = ppage;
+          g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][0] = ppage->start_addr_;
         }
       }
     }
 
+    char *alloc_log(uint64_t hash_key, last_log_offest &log_info, size_t alloc_size = 32) {
+      return ppage_[get_numa_id(thread_id)][hash_key % NALI_VERSION_SHARDS]->alloc(log_info, alloc_size);
+    }
+
+    char *get_addr(const last_log_offest &log_info, uint64_t hash_key) {
+      return g_ppage_s_addr_arr_->start_addr_arr_[log_info.numa_id_][hash_key % NALI_VERSION_SHARDS][log_info.ppage_id_] + log_info.log_offset_;
+    }
+
+    // 返回log相对地址
     uint64_t insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(INSERT);
-      // p.set_last_log_offest(hash_key, )
-      char *log_addr = ppage_[thread_id]->alloc(p.size());
+      last_log_offest log_info;
+      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
       p.store_persist(log_addr);
-      ppage_[thread_id]->persist_metadata(); // update metadata
-
-      uint64_t addr = (uint64_t)log_addr;
-      #ifdef USE_PROXY
-      uint64_t numa_id = get_numa_id(nali::thread_id);
-      // addr &= 0x00ffffffffffffff;
-      addr |= numa_id << 56;
-      // memcpy(&addr, &numa_id, 1); // MSB store numa_id
-      #endif
-      return addr;
+      return log_info.to_uint64_t_offset();
     }
 
     void erase(const T& key, uint64_t hash_key) {
-      Pair_t<T, P> p;
-      p.set_key(key);
-      p.set_op(DELETED);
-      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
-      char *log_addr = ppage_[thread_id]->alloc(p.size());
-      p.store_persist(log_addr);
-      ppage_[thread_id]->persist_metadata();
+      // Pair_t<T, P> p;
+      // p.set_key(key);
+      // p.set_op(DELETED);
+      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      // char *log_addr = ppage_[thread_id]->alloc(p.size());
+      // p.store_persist(log_addr);
+      // ppage_[thread_id]->persist_metadata();
     }
 
     uint64_t update(const T& key, const P& payload, uint64_t hash_key) {
-      Pair_t<T, P> p(key, payload);
-      p.set_op(UPDATE);
-      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
-      char *log_addr = ppage_[thread_id]->alloc(p.size());
-      p.store_persist(log_addr);
-      ppage_[thread_id]->persist_metadata();
+      // Pair_t<T, P> p(key, payload);
+      // p.set_op(UPDATE);
+      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      // char *log_addr = ppage_[thread_id]->alloc(p.size());
+      // p.store_persist(log_addr);
+      // ppage_[thread_id]->persist_metadata();
 
-      uint64_t addr = (uint64_t)log_addr;
-      #ifdef USE_PROXY
-      uint64_t numa_id = get_numa_id(nali::thread_id);
-      // addr &= 0x00ffffffffffffff;
-      addr |= numa_id << 56;
-      // memcpy(&addr, &numa_id, 1); // MSB store numa_id
-      #endif
-      return addr;
+      // uint64_t addr = (uint64_t)log_addr;
+      // #ifdef USE_PROXY
+      // uint64_t numa_id = get_numa_id(nali::thread_id);
+      // // addr &= 0x00ffffffffffffff;
+      // addr |= numa_id << 56;
+      // // memcpy(&addr, &numa_id, 1); // MSB store numa_id
+      // #endif
+      // return addr;
+      return 0;
     }
 
   private:
-    PPage *ppage_[max_thread_num] = {0};
+    PPage *ppage_[numa_node_num][NALI_VERSION_SHARDS] = {0};
     version_alloctor version_allocator_[NALI_VERSION_SHARDS];
 };
 

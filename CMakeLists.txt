@@ -12,7 +12,7 @@ set(MKL_INCLUDE_DIRECTORY "/opt/intel/mkl/include")
 link_directories(${MKL_LINK_DIRECTORY})
 include_directories(${MKL_INCLUDE_DIRECTORY})
 
-set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -march=native")
+set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -march=native -O3")
 
 add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)

@@ -2,6 +2,7 @@
 
 #include <map>
 #include <cstdint>
+#include <nali_kvlog.h>
 
 template<class T, class P>
 class Tree;
@@ -13,12 +14,12 @@ class Tree {
  public:
   typedef std::pair<T, P> V;
   virtual void bulk_load(const V[], int) = 0;
-  virtual bool insert(const T&, const P&, bool epoch = false) = 0;
-  virtual bool search(const T&, P*, bool epoch = false) = 0;
-  virtual bool erase(const T&, bool epoch = false) = 0;
-  virtual bool update(const T&, const P&, bool epoch = false) = 0;
+  virtual bool insert(const T&, const P&, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) = 0;
+  virtual bool search(const T&, P*) = 0;
+  virtual bool erase(const T&, char *log_addr = nullptr) = 0;
+  virtual bool update(const T&, const P&, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) = 0;
   // Return #keys really scanned
-  virtual int range_scan_by_size(const T&, uint32_t, V*& result, bool epoch = false) = 0;
+  virtual int range_scan_by_size(const T&, uint32_t, V*& resul) = 0;
 
   virtual void get_info() = 0;
 };
