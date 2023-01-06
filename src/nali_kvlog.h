@@ -15,7 +15,7 @@ namespace nali {
 
 extern thread_local size_t thread_id;
 
-enum OP_t { INSERT, DELETED, UPDATE, TRASH }; // TRASH is for gc
+enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
 const size_t INVALID = UINT64_MAX;
 const size_t MAX_VALUE_LEN = 512;
 const size_t MAX_KEY_LEN = 512;
@@ -48,7 +48,10 @@ class Pair_t {
   OP_VERSION version : VERSION_BITS;
   KEY _key;
   VALUE _value;
-  last_log_offest _last_log_offset;
+  union{
+    last_log_offest _last_log_offset;
+    uint64_t u_offset;
+  };
 
   Pair_t() {
     _key = 0;
@@ -69,6 +72,9 @@ class Pair_t {
   Pair_t(const KEY &k, const VALUE &v) {
     _key = k;
     _value = v;
+  }
+  Pair_t(const KEY &k) {
+    _key = k;
   }
   void set_key(KEY k) { _key = k; }
 
@@ -94,6 +100,9 @@ class Pair_t {
     _last_log_offset.numa_id_ = numa_id;
     _last_log_offset.ppage_id_ = ppage_id;
     _last_log_offset.log_offset_ = log_offset;
+  }
+  void set_last_log_offest(uint64_t log_offset) {
+    u_offset = log_offset;
   }
 
   OP_t get_op() { return static_cast<OP_t>(op); }
@@ -244,33 +253,24 @@ public:
       return log_info.to_uint64_t_offset();
     }
 
-    void erase(const T& key, uint64_t hash_key) {
-      // Pair_t<T, P> p;
-      // p.set_key(key);
-      // p.set_op(DELETED);
-      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
-      // char *log_addr = ppage_[thread_id]->alloc(p.size());
-      // p.store_persist(log_addr);
-      // ppage_[thread_id]->persist_metadata();
+    void erase(const T& key, uint64_t hash_key, uint64_t old_log_offset) {
+      Pair_t<T, P> p(key);
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_op(DELETE);
+      p.set_last_log_offest(old_log_offset);
+      last_log_offest log_info;
+      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
+      p.store_persist(log_addr);
+      return;
     }
 
-    uint64_t update(const T& key, const P& payload, uint64_t hash_key) {
-      // Pair_t<T, P> p(key, payload);
-      // p.set_op(UPDATE);
-      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
-      // char *log_addr = ppage_[thread_id]->alloc(p.size());
-      // p.store_persist(log_addr);
-      // ppage_[thread_id]->persist_metadata();
-
-      // uint64_t addr = (uint64_t)log_addr;
-      // #ifdef USE_PROXY
-      // uint64_t numa_id = get_numa_id(nali::thread_id);
-      // // addr &= 0x00ffffffffffffff;
-      // addr |= numa_id << 56;
-      // // memcpy(&addr, &numa_id, 1); // MSB store numa_id
-      // #endif
-      // return addr;
-      return 0;
+    char* update_step1(const T& key, const P& payload, uint64_t hash_key, Pair_t<T, P> &p, uint64_t &cur_log_addr) {
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_op(UPDATE);
+      last_log_offest log_info;
+      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
+      cur_log_addr = log_info.to_uint64_t_offset();
+      return log_addr;
     }
 
   private:

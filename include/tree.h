@@ -14,10 +14,10 @@ class Tree {
  public:
   typedef std::pair<T, P> V;
   virtual void bulk_load(const V[], int) = 0;
-  virtual bool insert(const T&, const P&, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) = 0;
+  virtual bool insert(const T&, const P&) = 0;
   virtual bool search(const T&, P*) = 0;
-  virtual bool erase(const T&, char *log_addr = nullptr) = 0;
-  virtual bool update(const T&, const P&, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) = 0;
+  virtual bool erase(const T&, uint64_t *log_offset = nullptr) = 0;
+  virtual bool update(const T&, const P&, uint64_t *log_offset = nullptr) = 0;
   // Return #keys really scanned
   virtual int range_scan_by_size(const T&, uint32_t, V*& resul) = 0;
 

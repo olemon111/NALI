@@ -33,7 +33,7 @@ namespace nali {
                 }
             }
 
-            bool insert(const T& key, const P& payload, const last_log_offest *log_info = nullptr, char *log_addr = nullptr) {
+            bool insert(const T& key, const P& payload) {
                 return db_->Put(key, payload);
             }
 
@@ -41,12 +41,12 @@ namespace nali {
                 return db_->Get(key, *payload); 
             }
 
-            bool erase(const T& key, char *log_addr = nullptr) {
-                return db_->Delete(key);
+            bool erase(const T& key, uint64_t *log_offset = nullptr) {
+                return db_->Delete(key, log_offset);
             }
 
-            bool update(const T& key, const P& payload, const last_log_offest *log_info = nullptr, char *log_addr = nullptr) {
-                return db_->Update(key, payload);
+            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
+                return db_->Update(key, payload, log_offset);
             }
 
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {

@@ -75,7 +75,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
             }
 
             // dram index kv pair: <key, vlog's numa_id+file_num+offest>
-            bool insert(const T& key, const P& payload, const nali::last_log_offest *log_info = nullptr, char *log_addr = nullptr) {
+            bool insert(const T& key, const P& payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
                 uint64_t log_offset = log_kv_->insert(key, payload, key_hash);
@@ -154,13 +154,13 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            bool erase(const T& key, char *log_addr = nullptr) {
+            bool erase(const T& key, uint64_t *log_offset = nullptr) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-                last_log_offest log_info;
-                char *log_offset = log_kv_->alloc_log(key_hash, log_info, 32); // TODO:var length log
-                bool ret = db_->erase(key);
 
+                uint64_t old_log_offset;
+                bool ret = db_->erase(key, &old_log_offset);
+                log_kv_->erase(key, key_hash, old_log_offset);
                 #ifdef USE_PROXY
                 check_read_queue();
                 #endif
@@ -171,11 +171,32 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            bool update(const T& key, const P& payload, const nali::last_log_offest * = nullptr, char *log_addr = nullptr) {
+            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-                uint64_t res = log_kv_->update(key, payload, key_hash);
-                bool ret = db_->update(key, res);
+
+                Pair_t<T, P> p(key, payload);
+                uint64_t cur_log_addr;
+                char *log_addr = log_kv_->update_step1(key, payload, key_hash, p, cur_log_addr);
+
+                #ifdef USE_PROXY
+                check_read_queue();
+                #endif
+
+                #ifdef USE_NALI_CACHE
+                cache_->insert(key, payload, key_hash);
+                #endif
+
+                uint64_t _log_offset;
+                bool ret = db_->update(key, cur_log_addr);
+                if (!ret)
+                    return ret;
+
+                // update_step2
+                {
+                    p.set_last_log_offest(_log_offset);
+                    p.store_persist(log_addr);
+                }
 
                 #ifdef USE_PROXY
                 check_read_queue();

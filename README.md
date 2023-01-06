@@ -1,4 +1,43 @@
 # NALI (Numa-Aware persistent Learned-Index)
+## Design
+  dram index + numa local shread hash nvm log
+
+  specific log design for background gc
+  
+  log store key and value
+
+  thread pool accelerate range scan
+
+  proxy thread for remote read?(may be no need, 测试时有重复key)
+
+## Operations
+  - insert op：
+    1. write log
+    2. dram index insert <key, cur_log_offset>
+  - update op:
+    1. get old_log_offset
+    2. write log
+    2. dram index update <key, old_log_offset> to <key, new_log_offset>
+  - get op:
+    1. get log_offset
+    2. get real_pmem_addr, then get real value
+  - delete op:
+    1. get old_log_offset
+    2. write log
+    2. dram delete key
+  - scan op:
+    ```c++
+    for (key: range keys) {
+      1. get key log_offset
+      2. get real_pmem_addr
+      3. send to thread_pool to get value from nvm
+    }
+    ```
+## TODO for optimize
+  - jemalloc optimize dram index?
+  - memory cacheline align?
+  - small-grained lock?
+  - hugepage?
 
 # 测试框架
 from apex source code

@@ -98,9 +98,9 @@ namespace nali
 
         bool scan_fast_fail(uint64_t key);
 
-        bool Update(uint64_t key, uint64_t value);
+        bool Update(uint64_t key, uint64_t value, uint64_t *old_offset);
 
-        bool Delete(uint64_t key);
+        bool Delete(uint64_t key, uint64_t *old_log_offset);
 
         static inline uint64_t get_entry_key(const PointerBEntry &entry)
         {
@@ -367,17 +367,17 @@ namespace nali
         return true;
     }
 
-    bool group::Update(uint64_t key, uint64_t value)
+    bool group::Update(uint64_t key, uint64_t value, uint64_t *old_offset)
     {
         int entry_id = find_entry(key);
-        auto ret = entry_space[entry_id].Update(key, value);
+        auto ret = entry_space[entry_id].Update(key, value, old_offset);
         return ret;
     }
 
-    bool group::Delete(uint64_t key)
+    bool group::Delete(uint64_t key, uint64_t *old_log_offset)
     {
         int entry_id = find_entry(key);
-        auto ret = entry_space[entry_id].Delete(key, nullptr);
+        auto ret = entry_space[entry_id].Delete(key, old_log_offset);
         return ret;
     }
 
@@ -649,13 +649,13 @@ namespace nali
 
         status Put(uint64_t key, uint64_t value);
 
-        bool Update(uint64_t key, uint64_t value);
+        bool Update(uint64_t key, uint64_t value, uint64_t *old_offset);
 
         bool Get(uint64_t key, uint64_t &value);
 
         bool Scan(uint64_t start_key, int len, std::vector<std::pair<uint64_t, uint64_t>> &results);
 
-        bool Delete(uint64_t key);
+        bool Delete(uint64_t key, uint64_t *old_log_offset);
 
         int find_group(const uint64_t &key) const;
 
@@ -854,7 +854,7 @@ namespace nali
         return ret;
     }
 
-    bool Nali::Update(uint64_t key, uint64_t value)
+    bool Nali::Update(uint64_t key, uint64_t value, uint64_t *old_offset)
     {
 #ifdef MULTI_THREAD
         trans_begin();
@@ -863,7 +863,7 @@ namespace nali
 #ifdef MULTI_THREAD
         lock_space[group_id].lock();
 #endif
-        auto ret = group_space[group_id].Update(key, value);
+        auto ret = group_space[group_id].Update(key, value, old_offset);
 #ifdef MULTI_THREAD
         lock_space[group_id].unlock();
 #endif
@@ -895,7 +895,7 @@ namespace nali
         return scan_slow(start_key, length, results);
     }
 
-    bool Nali::Delete(uint64_t key)
+    bool Nali::Delete(uint64_t key, uint64_t *old_log_offset)
     {
 #ifdef MULTI_THREAD
         trans_begin();
@@ -904,7 +904,7 @@ namespace nali
 #ifdef MULTI_THREAD
         lock_space[group_id].lock();
 #endif
-        auto ret = group_space[group_id].Delete(key);
+        auto ret = group_space[group_id].Delete(key, old_log_offset);
 #ifdef MULTI_THREAD
         lock_space[group_id].unlock();
 #endif

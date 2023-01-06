@@ -699,7 +699,7 @@ namespace nali
 
         status Put(uint64_t key, uint64_t value, char *fingerprint = nullptr);
 
-        status Update(uint64_t key, uint64_t value, char *fingerprint = nullptr);
+        status Update(uint64_t key, uint64_t value, uint64_t *old_offset, char *fingerprint = nullptr);
 
         status Get(uint64_t key, uint64_t &value, const char *fingerprint = nullptr) const;
 
@@ -846,8 +846,11 @@ namespace nali
         int pos = Find(key, find, fingerprint);
         if (find)
         {
-            if (pos == idx - 1)
+            if (pos == idx - 1) {
+                if (value)
+                    *value = records[pos].value;
                 return true;
+            }
             else
             {
                 if (value)
@@ -1018,7 +1021,7 @@ namespace nali
     template <const size_t bucket_size, const size_t value_size, const size_t key_size,
         const size_t max_entry_count>
     status UnSortBuncket<bucket_size, value_size, key_size, max_entry_count>::
-            Update(uint64_t key, uint64_t value, char *fingerprint)
+            Update(uint64_t key, uint64_t value, uint64_t *old_offset, char *fingerprint)
     {
         bool find = false;
         int pos = Find(key, find, fingerprint);
@@ -1026,6 +1029,7 @@ namespace nali
         {
             return status::NoExist;
         }
+        *old_offset = this->value(pos);
         SetValue(pos, value);
 #ifdef USE_FINGER
         fingerprint[pos] = hashcode1B(key);
@@ -1309,7 +1313,7 @@ namespace nali
             return ret;
         }
 
-        bool Update(uint64_t key, uint64_t value);
+        bool Update(uint64_t key, uint64_t value, uint64_t *old_offset);
 
         bool Get(uint64_t key, uint64_t &value) const;
 
@@ -1481,7 +1485,7 @@ namespace nali
         return pos;
     }
 
-    bool PointerBEntry::Update(uint64_t key, uint64_t value)
+    bool PointerBEntry::Update(uint64_t key, uint64_t value, uint64_t *old_offset)
     {
         int pos = Find_pos(key);
         if (unlikely(pos >= pb_entry_count || !entrys[pos].IsValid()))
@@ -1489,9 +1493,9 @@ namespace nali
             return false;
         }
     #ifdef USE_FINGER
-        auto ret = entrys[pos].pointer.pointer()->Update(key, value, entrys[pos].fingerprint);
+        auto ret = entrys[pos].pointer.pointer()->Update(key, value, old_offset, entrys[pos].fingerprint);
     #else
-        auto ret = entrys[pos].pointer.pointer()->Update(key, value, nullptr);
+        auto ret = entrys[pos].pointer.pointer()->Update(key, value, old_offset, nullptr);
     #endif
         return ret == status::OK;
     }
