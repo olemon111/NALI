@@ -26,6 +26,10 @@ namespace nali
 
         void unlock() { flag.clear(std::memory_order_release); }
 
+        void *operator new(size_t size) {
+            return aligned_alloc(64, size);
+        }
+
         private:
         std::atomic_flag flag = ATOMIC_FLAG_INIT;
         char padding[63];
@@ -55,6 +59,10 @@ namespace nali
             if (entry_space) {
                 delete [] entry_space;
             }
+        }
+
+        void *operator new(size_t size) {
+            return aligned_alloc(64, size);
         }
 
         void Init();
@@ -137,9 +145,7 @@ namespace nali
 
         nr_entries_ = 1;
 
-        entry_space = new PointerBEntry[nr_entries_];
-
-        new (&entry_space[0]) PointerBEntry(0, 8);
+        entry_space = new PointerBEntry(0, 8);
 
         model.init<PointerBEntry *, PointerBEntry>(entry_space, 1, 1, get_entry_key);
 
@@ -150,11 +156,11 @@ namespace nali
     {
         nr_entries_ = data.size();
 
-        PointerBEntry *new_entry_space = new PointerBEntry[nr_entries_];
+        PointerBEntry *new_entry_space = (PointerBEntry *)aligned_alloc(64, nr_entries_ * sizeof(PointerBEntry));
         size_t new_entry_count = 0;
         for (size_t i = 0; i < data.size(); i++)
         {
-            new (&new_entry_space[new_entry_count++]) PointerBEntry(data[i].first, data[i].second);
+            new_entry_space[new_entry_count++] = PointerBEntry(data[i].first, data[i].second);
         }
         model.init<PointerBEntry *, PointerBEntry>(new_entry_space, new_entry_count,
                                             std::ceil(1.0 * new_entry_count / 100), get_entry_key);
@@ -168,7 +174,7 @@ namespace nali
         size_t new_entry_count = 0;
         for (size_t i = 0; i < count; i++)
         {
-            new (&entry_space[new_entry_count++]) PointerBEntry(data[start + i].first,
+            entry_space[new_entry_count++] = PointerBEntry(data[start + i].first,
                                                             data[start + i].second, 0);
         }
         min_key = data[0].first;
@@ -183,7 +189,7 @@ namespace nali
         size_t new_entry_count = 0;
         for (size_t i = 0; i < count; i++)
         {
-            new (&entry_space[new_entry_count++]) PointerBEntry(data[start + i].first,
+            entry_space[new_entry_count++] = PointerBEntry(data[start + i].first,
                                                             data[start + i].second, 0);
         }
         min_key = data[0].first;
@@ -194,7 +200,7 @@ namespace nali
 
     void group::append_entry(const eentry *entry)
     {
-        new (&entry_space[nr_entries_++]) PointerBEntry(entry);
+        entry_space[nr_entries_++] = PointerBEntry(entry);
     }
 
     void group::reserve_space()
@@ -396,7 +402,7 @@ namespace nali
             while (!it.end())
             {
                 //std::cout << entry_space[i].buf.entries << std::endl;
-                new (&new_entry_space[new_entry_count++]) PointerBEntry(&(*it));
+                new_entry_space[new_entry_count++] = PointerBEntry(&(*it));
                 //std::cout << entry_space[i].buf.entries << std::endl;
                 it.next();
             }

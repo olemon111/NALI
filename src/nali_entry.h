@@ -98,6 +98,10 @@ namespace nali
 
         explicit SortBuncket(uint64_t key, uint64_t value, int prefix_len);
 
+        void *operator new(size_t size) {
+            return aligned_alloc(64, size);
+        }
+
         ~SortBuncket()
         {
         }
@@ -657,6 +661,10 @@ namespace nali
         }
 
         explicit UnSortBuncket(uint64_t key, uint64_t value, int prefix_len);
+
+        void *operator new(size_t size) {
+            return aligned_alloc(64, size);
+        }
 
         ~UnSortBuncket()
         {
@@ -1225,6 +1233,10 @@ namespace nali
         PointerBEntry(uint64_t key, uint64_t value, int prefix_len);
 
         PointerBEntry(const eentry *kventry);
+
+        void *operator new(size_t size) {
+            return aligned_alloc(64, size);
+        }
 
         /**
          * @brief 调整第一个entry的entry_key，用于可能存在插入比当前最小key还要小的情况

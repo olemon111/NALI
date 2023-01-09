@@ -57,7 +57,7 @@ include_directories(benchmark)
 include_directories(include/util)
 include_directories(src)
 include_directories(third)
-list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa)
+list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)

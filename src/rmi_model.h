@@ -1,5 +1,5 @@
 #pragma once 
-
+#include <jemalloc/jemalloc.h>
 #include "piecewise_linear_model.h"
 namespace LearnModel
 {
@@ -287,7 +287,7 @@ public:
 
         nr_stage_2 = sg_num;
         {
-          stage_1 = (stage_1_model_t *)malloc(sizeof(stage_1_model_t));
+          stage_1 = (stage_1_model_t *)aligned_alloc(64, sizeof(stage_1_model_t));
           //  (stage_1_model_t *)common_alloc->alloc(sizeof(stage_1_model_t));
           stage_1_model_builder_t builder(stage_1);
           size_t sample = std::ceil(1.0 * size / nr_stage_2);
@@ -299,7 +299,7 @@ public:
         }
 
         {
-          stage_2 = (stage_2_model_t *)malloc(nr_stage_2 * sizeof(stage_2_model_t));
+          stage_2 = (stage_2_model_t *)aligned_alloc(64, nr_stage_2 * sizeof(stage_2_model_t));
           // (stage_2_model_t *)common_alloc->alloc(nr_stage_2 * sizeof(stage_2_model_t));;
           int prev_stage_model_i = 0;
           stage_2_model_builder_t builder(&stage_2[prev_stage_model_i]);
@@ -358,7 +358,7 @@ public:
               << ", stage 2: " << nr_stage_2
               << ", stage 3: " << nr_stage_3 << std::endl;
         {
-          stage_1 = (stage_1_model_t *)malloc(sizeof(stage_1_model_t));
+          stage_1 = (stage_1_model_t *)aligned_alloc(64, sizeof(stage_1_model_t));
           // (stage_1_model_t *)common_alloc->alloc(sizeof(stage_1_model_t));
           stage_1_model_builder_t builder(stage_1);
           size_t sample = std::ceil(1.0 * size / nr_stage_2);
@@ -371,7 +371,7 @@ public:
         // std::cout << "stage 1: " << stage_1->a_ << ", " << stage_1->b_ << std::endl;
 
         {
-          stage_2 = (stage_2_model_t *)malloc(nr_stage_2 * sizeof(stage_2_model_t));
+          stage_2 = (stage_2_model_t *)aligned_alloc(64, nr_stage_2 * sizeof(stage_2_model_t));
           // (stage_2_model_t *)common_alloc->alloc(nr_stage_2 * sizeof(stage_2_model_t));
           int prev_stage_model_i = 0;
           stage_2_model_builder_t builder(&stage_2[prev_stage_model_i]);
@@ -391,7 +391,7 @@ public:
         }
 
         {
-          stage_3 = (stage_3_model_t *)malloc(nr_stage_3 * sizeof(stage_3_model_t));
+          stage_3 = (stage_3_model_t *)aligned_alloc(64, nr_stage_3 * sizeof(stage_3_model_t));
           // (stage_3_model_t *)common_alloc->alloc(nr_stage_3 * sizeof(stage_3_model_t));
           int prev_stage_model_i = 0;
           stage_3_model_builder_t builder(&stage_3[prev_stage_model_i]);

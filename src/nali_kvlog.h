@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <libpmem.h>
 #include <atomic>
-
+#include <jemalloc/jemalloc.h>
 #include "nali_alloc.h"
 #include "xxhash.h"
 #include "nali_cache.h"
@@ -132,6 +132,9 @@ class Pair_t {
 //  need query the table to get real offset
 struct global_ppage_meta {
   char *start_addr_arr_[numa_node_num][NALI_VERSION_SHARDS][64]; // numa_id + hash_id + page_id -> mmap_addr
+  void *operator new(size_t size) {
+    return aligned_alloc(64, size);
+  }
 };
 global_ppage_meta *g_ppage_s_addr_arr_;
 
@@ -153,6 +156,10 @@ class __attribute__((aligned(64))) PPage {
       header_.hash_id_ = hash_id;
       header_.ppage_id++;
       start_addr_ = alloc_new_ppage(numa_id, hash_id, header_.ppage_id);
+    }
+
+    void *operator new(size_t size) {
+      return aligned_alloc(64, size);
     }
 
     // if space is not enough, need create a new ppage
