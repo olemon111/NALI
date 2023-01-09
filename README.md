@@ -35,10 +35,21 @@
     ```
 ## TODO for optimize
   - jemalloc optimize dram index?
+    - 好像米有效果
   - memory cacheline align?
+    - 在使用jemalloc中确保64B对齐了
   - small-grained lock?
+    - 性能更差
   - hugepage?
+    ```shell
+    mkdir -p /mnt/hugetlbfs
+    mount -t hugetlbfs none /mnt/hugetlbfs
+    hugeadm --pool-pages-min 2MB:5120
+    hugeadm --pool-pages-max 2MB:10240
+    hugeadm --pool-list
 
+    LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes ./your_exe
+    ```
 # 测试框架
 from apex source code
 使用apex测试集

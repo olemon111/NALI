@@ -16,7 +16,7 @@ function Run() {
     # gdb --args \
     # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
     # numactl --cpunodebind=1 --membind=1 \
-    ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
+    LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --put-size ${opnum} --get-size ${opnum} \
         --numa0-thread $thread --numa1-thread $thread | tee -a multi-${dbname}-${Loadname}-th${thread}.txt
     echo "----------------"
