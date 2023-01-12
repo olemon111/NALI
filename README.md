@@ -30,7 +30,7 @@
     for (key: range keys) {
       1. get key log_offset
       2. get real_pmem_addr
-      3. send to thread_pool to get value from nvm
+      3. send to thread_pool to get value from nvm?
     }
     ```
 ## TODO for optimize
@@ -41,6 +41,7 @@
   - small-grained lock?
     - 性能更差
   - hugepage?
+    - 有一点点提升
     ```shell
     mkdir -p /mnt/hugetlbfs
     mount -t hugetlbfs none /mnt/hugetlbfs
@@ -50,6 +51,9 @@
 
     LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes ./your_exe
     ```
+  - thread pool for scan optimize
+    - 性能更差
+    - 注意：线程池函数不能传atomic变量，会编译fail
 # 测试框架
 from apex source code
 使用apex测试集
@@ -59,5 +63,3 @@ from apex source code
    - 调参叶节点设置为512KB读写性能较好
    - 测alexol注意不要测到扩展时候的性能(例如1亿kv时)
    - lgn数据集只测前130000000性能
- - 先基于art进行第一版代码实现
-   - 读和范围扫描需要把value所在的page pin住，防止被gc

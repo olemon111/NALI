@@ -6,7 +6,12 @@
 #include "util/utils.h"
 #include "util/xxhash.h"
 #include "util/concurrentqueue.h"
+#include "thread_pool.h"
 #include "../src/nali_kvlog.h"
+
+// 线程池宏
+// #define SCAN_USE_THREAD_POOL
+#define PER_THREAD_POOL_THREADS 8
 
 namespace nali {
 
@@ -41,12 +46,23 @@ extern thread_local size_t random_thread_id[numa_max_node];
 #endif
 
     template <class T, class P>
+    static inline void scan_help(std::pair<T, P>* &result, const std::pair<T, uint64_t> *t_values, const std::vector<int> pos_arr, int *complete_elems) {
+        for (int pos : pos_arr) {
+            result[pos].first = t_values[pos].first;
+            result[pos].second = ((nali::Pair_t<T, P> *)t_values[pos].second)->value();
+        }
+        ADD(complete_elems, pos_arr.size());
+    }
+
+    template <class T, class P>
     class logdb : public Tree<T, P> {
         public:
             typedef std::pair<T, P> V;
             logdb(Tree <T, uint64_t> *db, const std::vector<std::vector<int>> &thread_arr) : db_(db) {
                 log_kv_ = new nali::LogKV<T, P>();
                 thread_ids = thread_arr;
+                for (int i = 0; i < numa_node_num; i++)
+                    thread_pool_[i] = new ThreadPool(i, PER_THREAD_POOL_THREADS);
                 #ifdef USE_NALI_CACHE
                 cache_ = new nali::nali_lrucache<T, P>();
                 #endif
@@ -107,10 +123,10 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 if (!ret)
                     return ret;
                 last_log_offest log_info(addr_info);
-                int8_t numa_id = log_info.numa_id_;
                 uint64_t pmem_addr = reinterpret_cast<uint64_t>(log_kv_->get_addr(log_info, key_hash));
                 
                 #ifdef USE_PROXY
+                    int8_t numa_id = log_info.numa_id_;
                     if (numa_id == get_numa_id(nali::thread_id)) {
                         *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
                     } else {
@@ -208,23 +224,56 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return ret;
             }
 
-            // TODO(zzy) : range scan's proxy!
             // scan not go through cache
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                // std::pair<T, uint64_t> *t_values = new std::pair<T, uint64_t>[to_scan];
-                // int scan_size = db_->range_scan_by_size(key, to_scan, t_values, epoch);
-                // for (int i = 0; i < scan_size; i++) {
-                //     result[i].first = t_values[i].first;
-                //     result[i].second = ((nali::Pair_t<T, P> *)t_values[i].second)->value();
-                // }
+                // 1. get relative addrs
+                std::pair<T, uint64_t> *t_values = new std::pair<T, uint64_t>[to_scan];
+                int scan_size = db_->range_scan_by_size(key, to_scan, t_values);
+                int complete_reads = 0;
+                std::vector<std::vector<int>> numa_pos_arr(numa_node_num);
+                // 2. trans realtive addrs to absolute addrs
+                for (int i = 0; i < scan_size; i++) {
+                    T kkk = t_values[i].first;
+                    uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                    last_log_offest log_info(t_values[i].second);
+                    t_values[i].second = reinterpret_cast<uint64_t>(log_kv_->get_addr(log_info, key_hash));
+                    
+                #ifdef SCAN_USE_THREAD_POOL
+                    {
+                        numa_pos_arr[log_info.numa_id_].push_back(i);
+                        // batch send to background thread,不同numa vlog发送到对应线程池处理
+                        // if (numa_pos_arr[log_info.numa_id_].size() % 45 == 0) {
+                        //     thread_pool_[log_info.numa_id_]->execute(scan_help<T, P>, result, t_values, numa_pos_arr[log_info.numa_id_], &complete_reads);
+                        //     numa_pos_arr[log_info.numa_id_].clear();
+                        // }
+                        if (unlikely(i == scan_size-1)) {
+                            for (int j = 0; j < numa_node_num; j++) {
+                                if (numa_pos_arr[j].size() != 0) {
+                                    thread_pool_[j]->execute(scan_help<T,P>, result, t_values, numa_pos_arr[j], &complete_reads);
+                                }
+                            }
+                            std::this_thread::yield();
+                            // wait until work is complete
+                            while (LOAD(&complete_reads) != scan_size) {
+                                std::this_thread::yield();
+                            }
+                        }
+                    }
+                #endif
+                }
 
-                // #ifdef USE_PROXY
-                // check_read_queue();
-                // #endif
-                // return scan_size;
-                // TODO()zzy
-                assert(false);
-                return 0;
+                #ifndef SCAN_USE_THREAD_POOL
+                // or do work itself
+                for (int i = 0; i < scan_size; i++) {
+                    result[i].first = t_values[i].first;
+                    result[i].second = ((nali::Pair_t<T, P> *)t_values[i].second)->value();
+                }
+                #endif
+
+                #ifdef USE_PROXY
+                check_read_queue();
+                #endif
+                return scan_size;
             }
 
             void get_info() {
@@ -254,6 +303,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
             Tree<T, uint64_t> *db_;
             nali::LogKV<T, P> *log_kv_;
             std::vector<std::vector<int>> thread_ids; // per_numa_ids
+            ThreadPool *thread_pool_[numa_node_num];
 
             #ifdef USE_PROXY
             moodycamel::ConcurrentQueue<read_req<P>*> readreq_queue_[max_thread_num];

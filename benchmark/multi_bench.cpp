@@ -125,7 +125,7 @@ int numa1_thread_num = 16;
 size_t LOAD_SIZE   = 390000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 100000000;
-size_t DELETE_SIZE = 10000000;
+size_t DELETE_SIZE = 100000000;
 int Loads_type = 3;
 
 template<typename T>
@@ -393,20 +393,170 @@ int main(int argc, char *argv[]) {
               << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
   }
 
+  // {
+  //    // Get
+  //   Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+  //   for (size_t i = 0; i < GET_SIZE; ++i) {
+  //     int idx = get_rnd.Next();
+  //     std::swap(data_base[i], data_base[idx]);
+  //   }
+
+  //   LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
+
+  //   for (int loop = 0; loop < 1; loop++) {
+  //     std::vector<std::thread> threads;
+  //     std::atomic_int thread_idx_count(0);
+  //     size_t per_thread_size = GET_SIZE / total_thread_num;
+      
+  //     #ifdef STATISTIC_PMEM_INFO
+  //     pin_start(&nvdimm_counter_begin);
+  //     #endif
+
+  //     auto ts = TIME_NOW;
+  //     for (int i = 0; i < thread_id_arr.size(); ++i) {
+  //         threads.emplace_back([&](){
+  //         int idx = thread_idx_count.fetch_add(1); 
+  //         nali::thread_id = thread_id_arr[idx];
+  //         nali::bindCore(nali::thread_id);
+  //         size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+  //         size_t start_pos = idx * per_thread_size;
+              
+  //         int wrong_get = 0;
+  //         for (int t = 0; t < 1; t++) {
+  //           for (size_t j = 0; j < size; ++j) {
+  //             bool ret;
+  //             size_t value;
+  //             ret = db->search(data_base[start_pos+j], &value);
+              
+  //             if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+  //               wrong_get++;
+  //             }
+  //             if(idx == 0 && (j + 1) % 100000 == 0) {
+  //               std::cerr << "Operate: " << j + 1 << '\r'; 
+  //             }
+  //           }
+  //         }
+  //         if (wrong_get != 0) {
+  //           std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+  //         }
+  //       });
+  //     }
+
+  //     for (auto& t : threads)
+  //       t.join();
+          
+  //     auto te = TIME_NOW;
+
+  //     #ifdef STATISTIC_PMEM_INFO
+  //     pin_end(&nvdimm_counter_end);
+  //     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+  //     #endif
+      
+  //     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+  //     std::cout << "[Get]: Get " << GET_SIZE << ": " 
+  //               << "cost " << use_seconds << "s, " 
+  //               << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
+  //   }
+  // }
+
+  
+  // {
+  //   size_t total_mix_ops = 10000000;
+  //   std::vector<float> insert_ratios = {1};
+  //   // std::vector<float> insert_ratios = {0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
+  //   float insert_ratio = 0;
+
+  //   LOG_INFO(" @@@@@@@@@@@@@ mixed update/get @@@@@@@@@@@@@@@");
+
+  //   for (int loop = 0; loop < insert_ratios.size(); loop++) {
+  //     // mix update/get
+  //     util::FastRandom ranny(18);
+  //     std::vector<double> random_ratio(total_mix_ops);
+  //     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+  //     for (size_t i = 0; i < total_mix_ops; ++i) {
+  //       int idx = get_rnd.Next();
+  //       std::swap(data_base[i], data_base[idx]);
+  //       random_ratio[i] = ranny.ScaleFactor();
+  //     }
+
+  //     insert_ratio = insert_ratios[loop];
+  //     std::vector<std::thread> threads;
+  //     std::atomic_int thread_idx_count(0);
+  //     size_t per_thread_size = total_mix_ops / total_thread_num;
+      
+  //     #ifdef STATISTIC_PMEM_INFO
+  //     pin_start(&nvdimm_counter_begin);
+  //     #endif
+
+  //     auto ts = TIME_NOW;
+  //     for (int i = 0; i < thread_id_arr.size(); ++i) {
+  //         threads.emplace_back([&](){
+  //         int idx = thread_idx_count.fetch_add(1); 
+  //         nali::thread_id = thread_id_arr[idx];
+  //         nali::bindCore(nali::thread_id);
+  //         size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
+  //         size_t start_pos = idx * per_thread_size;
+              
+  //         int wrong_get = 0;
+  //         for (int t = 0; t < 1; t++) {
+  //           for (size_t j = 0; j < size; ++j) {
+  //             bool ret;
+  //             size_t value;
+  //             if (random_ratio[start_pos+j] < insert_ratio) {
+  //               value = 0x19990627UL;
+  //               ret = db->update(data_base[start_pos+j], value);
+  //             } else {
+  //               ret = db->search(data_base[start_pos+j], &value);
+  //               if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+  //                 wrong_get++;
+  //               }
+  //             }
+              
+  //             if(idx == 0 && (j + 1) % 100000 == 0) {
+  //               std::cerr << "Operate: " << j + 1 << '\r'; 
+  //             }
+  //           }
+  //         }
+  //         if (wrong_get != 0) {
+  //           std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+  //         }
+  //       });
+  //     }
+
+  //     for (auto& t : threads)
+  //       t.join();
+          
+  //     auto te = TIME_NOW;
+
+  //     #ifdef STATISTIC_PMEM_INFO
+  //     pin_end(&nvdimm_counter_end);
+  //     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+  //     #endif
+      
+  //     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+  //     std::cout << "[Mix]: Mix " << total_mix_ops << ": " 
+  //               << "cost " << use_seconds << "s, " 
+  //               << "iops " << (double)(total_mix_ops)/use_seconds << " ." << std::endl;
+  //   }
+  // }
+  
   {
-     // Get
-    Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
-    for (size_t i = 0; i < GET_SIZE; ++i) {
+    // Scan
+    const uint64_t total_scan_ops = 1000000;
+    std::vector<int> scan_size = {100};
+    
+    Random get_rnd(0, LOAD_SIZE+PUT_SIZE-10000);
+    for (size_t i = 0; i < total_scan_ops; ++i) {
       int idx = get_rnd.Next();
       std::swap(data_base[i], data_base[idx]);
     }
 
-    LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
+    LOG_INFO(" @@@@@@@@@@@@@ scan @@@@@@@@@@@@@@@");
 
-    for (int loop = 0; loop < 1; loop++) {
+    for (int scan : scan_size) {
       std::vector<std::thread> threads;
       std::atomic_int thread_idx_count(0);
-      size_t per_thread_size = GET_SIZE / total_thread_num;
+      size_t per_thread_size = total_scan_ops / total_thread_num;
       
       #ifdef STATISTIC_PMEM_INFO
       pin_start(&nvdimm_counter_begin);
@@ -418,19 +568,19 @@ int main(int argc, char *argv[]) {
           int idx = thread_idx_count.fetch_add(1); 
           nali::thread_id = thread_id_arr[idx];
           nali::bindCore(nali::thread_id);
-          size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+          size_t size = (idx == thread_id_arr.size()-1) ? (total_scan_ops-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
-              
+          std::pair<uint64_t, uint64_t> *results = new std::pair<uint64_t, uint64_t>[scan];
+          int total_get = 0;
           int wrong_get = 0;
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
-              bool ret;
-              size_t value;
-              ret = db->search(data_base[start_pos+j], &value);
-              
-              if (!ret || value != data_base[start_pos+j]) {
-                // std::cout << "Get error!" << std::endl;
-                wrong_get++;
+              int scan_num = db->range_scan_by_size(data_base[start_pos+j], scan, results);
+              total_get += scan_num;
+              for (int s = 0; s < scan_num; s++) {
+                if (results[s].first != results[s].second && results[s].second != 0x19990627UL) {
+                  wrong_get++;
+                }
               }
               if(idx == 0 && (j + 1) % 100000 == 0) {
                 std::cerr << "Operate: " << j + 1 << '\r'; 
@@ -438,8 +588,9 @@ int main(int argc, char *argv[]) {
             }
           }
           if (wrong_get != 0) {
-            std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+            std::cout << "thread " << nali::thread_id << ", total scan kvs: " << total_get << ", wrong get: " << wrong_get << std::endl;
           }
+          delete [] results;
         });
       }
 
@@ -454,115 +605,77 @@ int main(int argc, char *argv[]) {
       #endif
       
       auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-      std::cout << "[Get]: Get " << GET_SIZE << ": " 
+      std::cout << "[Scan]: Scan " << total_scan_ops << " , per scan size: " << scan << ": " 
                 << "cost " << use_seconds << "s, " 
-                << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
+                << "iops " << (double)(total_scan_ops)/use_seconds << " ." << std::endl;
     }
   }
 
-  util::FastRandom ranny(18);
+  {
+     // Delete
+    Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+    for (size_t i = 0; i < DELETE_SIZE; ++i) {
+      int idx = get_rnd.Next();
+      std::swap(data_base[i], data_base[idx]);
+    }
 
-  // // db->Info();
-  // // us_times = timer.Microsecond("stop", "start");
-  // // timer.Record("start");
-  // // Different insert_ration
-  // std::vector<float> insert_ratios = {1};
-  // // std::vector<float> insert_ratios = {0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
-  // float insert_ratio = 0;
-  
-  // std::cout << "Start testing ...." << std::endl;
-  // intel_pin_start();
-  // for (int i = 0; i < insert_ratios.size(); i++)
-  // {
-  //   int wrong_get = 0;
-  //   uint64_t value = 0;
-  //   insert_ratio = insert_ratios[i];
-  //   db->Begin_trans();
-  //   std::cout << "Data loaded: " << load_pos << std::endl;
-  //   vector<uint64_t> rand_pos;
-  //   for(uint64_t i = 0;i<GET_SIZE;i++){
-  //       rand_pos.push_back(ranny.RandUint32(0, load_pos - 1));
-  //   }
-  //   timer.Clear();
-  //   timer.Record("start");
-  //   for (uint64_t i = 0; i < GET_SIZE; i++)
-  //   {
-  //     if (ranny.ScaleFactor() < insert_ratio)
-  //     {
-  //       db->Put(data_base[load_pos], (uint64_t)data_base[load_pos]);
-  //       load_pos++;
-  //     }
-  //     else
-  //     {
-  //       // uint64_t op_seq = ranny.RandUint32(0, load_pos - 1);
-  //       db->Get(data_base[rand_pos[i]], value);
-  //       if(value != data_base[rand_pos[i]]){
-  //         wrong_get++;
-  //       }
-  //     }
-  //   }
-  //   std::cout << "wrong get: " << wrong_get << std::endl;
-  //   timer.Record("stop");
-  //   us_times = timer.Microsecond("stop", "start");
-  //   std::cout << "[Metic-Operate]: Operate " << GET_SIZE << " insert_ratio " << insert_ratio << ": "
-  //             << "cost " << us_times / 1000000.0 << "s, "
-  //             << "iops " << (double)(GET_SIZE) / (double)us_times * 1000000.0 << " ." << std::endl;
-  // }
-  // intel_pin_stop();
+    LOG_INFO(" @@@@@@@@@@@@@ delete @@@@@@@@@@@@@@@");
 
-  // unit 测试
-  if (total_thread_num == 1) {
-    // scan
-    {
-      LOG_INFO(" @@@@@@@@@@@@@ single thread scan @@@@@@@@@@@@@@@");
-      uint64_t total_scan_size = 400000000;
-      std::vector<int> scan_size = {100};
-      for (auto scan : scan_size)
-      {
-        auto ts = TIME_NOW;
-        uint64_t scan_times = total_scan_size / scan;
-        std::pair<uint64_t, uint64_t> *results = new std::pair<uint64_t, uint64_t>[scan];
-        for (int i = 0; i < scan_times; ++i)
-        {
-          if(i%1000000 == 0){
-            std::cerr << "scan times: " << scan_times << '\r';  
+    std::vector<std::thread> threads;
+    std::atomic_int thread_idx_count(0);
+    size_t per_thread_size = DELETE_SIZE / total_thread_num;
+    
+    #ifdef STATISTIC_PMEM_INFO
+    pin_start(&nvdimm_counter_begin);
+    #endif
+
+    auto ts = TIME_NOW;
+    for (int i = 0; i < thread_id_arr.size(); ++i) {
+        threads.emplace_back([&](){
+        int idx = thread_idx_count.fetch_add(1); 
+        nali::thread_id = thread_id_arr[idx];
+        nali::bindCore(nali::thread_id);
+        size_t size = (idx == thread_id_arr.size()-1) ? (DELETE_SIZE-idx*per_thread_size) : per_thread_size;
+        size_t start_pos = idx * per_thread_size;
+            
+        int wrong_get = 0;
+        for (int t = 0; t < 1; t++) {
+          for (size_t j = 0; j < size; ++j) {
+            bool ret;
+            size_t value;
+            ret = db->erase(data_base[start_pos+j]);
+            
+            // if (!ret || value != data_base[start_pos+j]) {
+            //   // std::cout << "Get error!" << std::endl;
+            //   wrong_get++;
+            // }
+            if(idx == 0 && (j + 1) % 100000 == 0) {
+              std::cerr << "Operate: " << j + 1 << '\r'; 
+            }
           }
-          uint64_t op_seq = ranny.RandUint32(0, LOAD_SIZE + PUT_SIZE);
-          
-          db->range_scan_by_size(data_base[op_seq], scan, results);
         }
-
-        auto te = TIME_NOW;
-        auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-        std::cout << "[Scan]: Scan " << scan << " " << scan_times <<" times: "
-                  << "cost " << use_seconds << "s, "
-                  << "iops " << (double)(scan_times) / use_seconds << " ." << std::endl;
-        delete [] results;
-      }
-    }
-      
-
-    // delete
-    {
-      LOG_INFO(" @@@@@@@@@@@@@ single thread delete @@@@@@@@@@@@@@@");
-      uint64_t DELETE_SIZE = 10000000;
-      auto ts = TIME_NOW;
-      for (int i = 0; i < DELETE_SIZE; ++i)
-      {
-        if(i%1000000 == 0){
-          std::cerr << "delete times: " << i << '\r'; 
+        if (wrong_get != 0) {
+          std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
         }
-        uint64_t op_seq = ranny.RandUint32(0, LOAD_SIZE + PUT_SIZE);
-        db->erase(data_base[i]);
-      }
-      auto te = TIME_NOW;
-      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-      std::cout << "[Delete]: Delete " << DELETE_SIZE << ": "
-                << "cost " << use_seconds << "s, "
-                << "iops " << (double)(DELETE_SIZE) / use_seconds << " ." << std::endl;
+      });
     }
+
+    for (auto& t : threads)
+      t.join();
+        
+    auto te = TIME_NOW;
+
+    #ifdef STATISTIC_PMEM_INFO
+    pin_end(&nvdimm_counter_end);
+    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+    #endif
+    
+    auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+    std::cout << "[Delete]: Delete " << DELETE_SIZE << ": " 
+              << "cost " << use_seconds << "s, " 
+              << "iops " << (double)(DELETE_SIZE)/use_seconds << " ." << std::endl;
   }
-
+  
   delete db;
 
   return 0;

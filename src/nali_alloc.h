@@ -29,17 +29,6 @@ const int max_thread_num = 64; // 每个numa节点32threads
 extern thread_local size_t thread_id;
 extern int8_t numa_map[max_thread_num];
 
-void bindCore(uint16_t core) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core, &cpuset);
-    int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-    if (rc != 0) {
-        printf("can't bind core %d!", core);
-        exit(-1);
-    }
-}
-
 /**
  * $ lscpu
  * NUMA node0 CPU(s):               0-15,32-47

@@ -659,7 +659,7 @@ namespace nali
 
         bool Get(uint64_t key, uint64_t &value);
 
-        bool Scan(uint64_t start_key, int len, std::vector<std::pair<uint64_t, uint64_t>> &results);
+        bool Scan(uint64_t start_key, int &len, std::vector<std::pair<uint64_t, uint64_t>> &results);
 
         bool Delete(uint64_t key, uint64_t *old_log_offset);
 
@@ -888,17 +888,16 @@ namespace nali
         return find_slow(key, value);
     }
 
-    bool Nali::Scan(uint64_t start_key, int len, std::vector<std::pair<uint64_t, uint64_t>> &results)
+    bool Nali::Scan(uint64_t start_key, int &len, std::vector<std::pair<uint64_t, uint64_t>> &results)
     {
 #ifdef MULTI_THREAD
         trans_begin();
 #endif
-        int length = len;
-        if (scan_fast(start_key, length, results))
+        if (scan_fast(start_key, len, results))
         {
             return true;
         }
-        return scan_slow(start_key, length, results);
+        return scan_slow(start_key, len, results);
     }
 
     bool Nali::Delete(uint64_t key, uint64_t *old_log_offset)

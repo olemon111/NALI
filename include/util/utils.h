@@ -204,5 +204,16 @@ private:
   std::atomic<uint8_t> l;
 };
 
+static inline void bindCore(uint16_t core) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    if (rc != 0) {
+        printf("can't bind core %d!", core);
+        exit(-1);
+    }
+}
+
 }
 

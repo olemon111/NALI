@@ -50,11 +50,14 @@ namespace nali {
             }
 
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                // auto scan_size = db_->Scan(key, static_cast<int>(to_scan), result);
-                // return to_scan;
-                // TODO
-                assert(false);
-                return 0;
+                int scan_size = to_scan;
+                std::vector<std::pair<uint64_t, uint64_t>> res;
+                db_->Scan(key, scan_size, res);
+                assert(scan_size == res.size());
+                for (int i = 0; i < res.size(); i++) {
+                    result[i] = res[i];
+                }
+                return res.size();
             }
 
             void get_info() {
