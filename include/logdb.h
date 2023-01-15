@@ -66,9 +66,24 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 #ifdef USE_NALI_CACHE
                 cache_ = new nali::nali_lrucache<T, P>();
                 #endif
+
+                // void background_gc(logdb *db, nali::LogKV<T, P> *log_kv_, int begin_pos, int end_pos)
+                std::atomic<int> gc_thread_id(0);
+                const int gc_thread_num = 8;
+                const int per_thread_part = NALI_VERSION_SHARDS / gc_thread_num;
+                for(int i = 0; i < gc_thread_num; i++) {
+                    gc_threads.emplace_back([&](){
+                        int thread_id = gc_thread_id.fetch_add(1);
+                        int start_pos = thread_id * per_thread_part;
+                        background_gc(this, log_kv_, start_pos, start_pos + per_thread_part);
+                    });
+                }
             }
 
             ~logdb() {
+                // TODO: kill gc threads
+                for (auto& t : gc_threads)
+                    t.join();
                 delete db_;
                 delete log_kv_;
                 #ifdef USE_NALI_CACHE
@@ -106,6 +121,19 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 #endif
 
                 return ret;
+            }
+
+            char *get_value_log_addr(const T&key) {
+                const T kkk = key;
+                uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                uint64_t addr_info = 0;
+                bool ret = db_->search(key, &addr_info);
+                if (!ret) {
+                    std::cout << "wrong key!" << std::endl;
+                    exit(1);
+                }
+                last_log_offest log_info(addr_info);
+                return log_kv_->get_addr(log_info, key_hash);
             }
 
             bool search(const T& key, P* payload) {
@@ -299,12 +327,68 @@ extern thread_local size_t random_thread_id[numa_max_node];
             }
             #endif
 
+            // 目前只支持定长32B log
+            void background_gc(logdb *db, nali::LogKV<T, P> *log_kv_, int begin_pos, int end_pos) {
+                sleep(100);
+                while (true) {
+                    // 1. wait until can do gc(TODO)
+                    sleep(20);
+                    // 2. 获取当前最新日志文件号l，从日志号l-1文件开始回收
+                        // 对于put/update log，回到dram index get(key, &value)判断log是否valid
+                            // 如果valid，则把其后边的日志全部置为无效，再次执行一次该log后删除该log
+                            // 如果invalid，则回溯删除所有old log和本log
+                        // 对于delete log，回溯删除掉所有old log和本log
+                    for (int i = MAX_LOF_FILE_ID; i >= 0; i--) {
+                        for (int j = begin_pos; j < end_pos; j++) {
+                            for (int k = 0; k < numa_node_num; k++) {
+                                char *start_addr = log_kv_->get_page_start_addr(k, j, i);
+                                for (int t = 0; t < PPAGE_SIZE; t += 32) {
+                                    Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+t);
+                                    OP_t log_op_ = log_->get_op();
+                                    if (log_op_ == OP_t::INSERT || log_op_ == OP_t::UPDATE || log_op_ == OP_t::DELETE) {
+                                        std::vector<Pair_t<T, P> *> old_log;
+                                        const T kkk = log_->key();
+                                        uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                                        if (log_op_ == OP_t::DELETE) {
+                                            old_log.push_back(log_);
+                                        } else {
+                                            char *dram_vlog_addr = db->get_value_log_addr(log_->key());
+                                            if (dram_vlog_addr != (char *)log_) {
+                                                old_log.push_back(log_);
+                                            }
+                                        }
+                                        
+                                        uint64_t next_old_log = log_->next_old_log();
+                                        while (next_old_log != UINT64_MAX) { // 最old的日志，next log地址为全1
+                                            last_log_offest log_info(next_old_log);
+                                            log_ = (nali::Pair_t<T, P> *)log_kv_->get_addr(log_info, key_hash);
+                                            if (log_->get_op() == OP_t::TRASH)
+                                                break;
+                                            old_log.push_back(log_);
+                                        }
+                                        for (int p = old_log.size(); p >= 0; p--) {
+                                            log_ = old_log[p];
+                                            log_->set_op_persist(OP_t::TRASH);
+                                        }
+                                    } else if (log_op_ == OP_t::TRASH) {
+                                        continue;
+                                    } else {
+                                        std::cout << "gc_thread: invalid log op" << std::endl;
+                                        exit(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
         private:
             Tree<T, uint64_t> *db_;
             nali::LogKV<T, P> *log_kv_;
             std::vector<std::vector<int>> thread_ids; // per_numa_ids
             ThreadPool *thread_pool_[numa_node_num];
-
+            std::vector<std::thread> gc_threads;
             #ifdef USE_PROXY
             moodycamel::ConcurrentQueue<read_req<P>*> readreq_queue_[max_thread_num];
             #endif

@@ -65,8 +65,7 @@ class Pair_t {
     auto pt = reinterpret_cast<Pair_t<KEY, VALUE> *>(p);
     *this = *pt;
   }
-  KEY *key() { return &_key; }
-  KEY str_key() { return _key; }
+  KEY key() { return _key; }
   VALUE value() { return _value; }
   size_t klen() { return sizeof(KEY); }
   Pair_t(const KEY &k, const VALUE &v) {
@@ -115,6 +114,7 @@ class Pair_t {
     auto total_length = sizeof(OP_VERSION) + sizeof(KEY) + sizeof(VALUE) + sizeof(last_log_offest);
     return total_length;
   }
+  uint64_t next_old_log() { return u_offset; }
 };
 
 #pragma pack()
@@ -128,13 +128,15 @@ class Pair_t {
 
 #define NALI_VERSION_SHARDS 256
 
+#define MAX_LOF_FILE_ID 64
 // need a table to store all old logfile's start offset
 //  need query the table to get real offset
 struct global_ppage_meta {
-  char *start_addr_arr_[numa_node_num][NALI_VERSION_SHARDS][64]; // numa_id + hash_id + page_id -> mmap_addr
+  char *start_addr_arr_[numa_node_num][NALI_VERSION_SHARDS][MAX_LOF_FILE_ID]; // numa_id + hash_id + page_id -> mmap_addr
   void *operator new(size_t size) {
     return aligned_alloc(64, size);
   }
+  global_ppage_meta() { memset(start_addr_arr_, 0, sizeof(start_addr_arr_)); }
 };
 global_ppage_meta *g_ppage_s_addr_arr_;
 
@@ -247,6 +249,10 @@ public:
 
     char *get_addr(const last_log_offest &log_info, uint64_t hash_key) {
       return g_ppage_s_addr_arr_->start_addr_arr_[log_info.numa_id_][hash_key % NALI_VERSION_SHARDS][log_info.ppage_id_] + log_info.log_offset_;
+    }
+
+    char *get_page_start_addr(int numa_id, int hash_id, int logpage_id) {
+      return g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][logpage_id];
     }
 
     // 返回log相对地址
