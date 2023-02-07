@@ -67,17 +67,16 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 cache_ = new nali::nali_lrucache<T, P>();
                 #endif
 
-                // void background_gc(logdb *db, nali::LogKV<T, P> *log_kv_, int begin_pos, int end_pos)
-                std::atomic<int> gc_thread_id(0);
-                const int gc_thread_num = 8;
-                const int per_thread_part = NALI_VERSION_SHARDS / gc_thread_num;
-                for(int i = 0; i < gc_thread_num; i++) {
-                    gc_threads.emplace_back([&](){
-                        int thread_id = gc_thread_id.fetch_add(1);
-                        int start_pos = thread_id * per_thread_part;
-                        background_gc(this, log_kv_, start_pos, start_pos + per_thread_part);
-                    });
-                }
+                // std::atomic<int> gc_thread_id(0);
+                // const int gc_thread_num = 8;
+                // const int per_thread_part = NALI_VERSION_SHARDS / gc_thread_num;
+                // for(int i = 0; i < gc_thread_num; i++) {
+                //     gc_threads.emplace_back([&](){
+                //         int thread_id = gc_thread_id.fetch_add(1);
+                //         int start_pos = thread_id * per_thread_part;
+                //         background_gc(this, log_kv_, start_pos, start_pos + per_thread_part);
+                //     });
+                // }
             }
 
             ~logdb() {
@@ -105,7 +104,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 // delete [] t_values;
             }
 
-            // dram index kv pair: <key, vlog's numa_id+file_num+offest>
+            // dram index kv pair: <key, vlog's vlen+numa_id+file_num+offest>
             bool insert(const T& key, const P& payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
@@ -232,7 +231,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 #endif
 
                 uint64_t _log_offset;
-                bool ret = db_->update(key, cur_log_addr);
+                bool ret = db_->update(key, cur_log_addr, &_log_offset);
                 if (!ret)
                     return ret;
 

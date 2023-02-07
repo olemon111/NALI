@@ -16,27 +16,26 @@ namespace nali {
 extern thread_local size_t thread_id;
 
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
-const size_t INVALID = UINT64_MAX;
-const size_t MAX_VALUE_LEN = 512;
-const size_t MAX_KEY_LEN = 512;
 using OP_VERSION = uint64_t;
 constexpr int OP_BITS = 2;
 constexpr int VERSION_BITS = sizeof(OP_VERSION) * 8 - OP_BITS;
 
-constexpr uint64_t numa_id_mask = (0xffffUL << 48);
-constexpr uint64_t ppage_id_mask = (0xffffUL << 32);
+constexpr uint64_t vlen_mask = (0xffffUL << 48);
+constexpr uint64_t numa_id_mask = (0xffUL << 40);
+constexpr uint64_t ppage_id_mask = (0xffUL << 32);
 constexpr uint64_t log_offset_mask = 0xffffffffUL;
 struct last_log_offest {
-  uint16_t numa_id_; // last log's logfile numa id
-  uint16_t ppage_id_; // last log's logfile number
+  uint16_t vlen_; // value_length
+  uint8_t numa_id_; // last log's logfile numa id
+  uint8_t ppage_id_; // last log's logfile number
   uint32_t log_offset_; // last log's in-logfile's offset
-  last_log_offest() : numa_id_(UINT16_MAX) {}; // set to UINT16_MAX to indicate it is first log
-  last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) : 
-      numa_id_(numa_id), ppage_id_(ppage_id), log_offset_(log_offset) {}
-  last_log_offest(uint64_t addr_info) : numa_id_((addr_info & numa_id_mask)>>48), 
+  last_log_offest() : numa_id_(UINT8_MAX) {}; // set to UINT8_MAX to indicate it is first log
+  last_log_offest(uint16_t vlen, uint8_t numa_id, uint8_t ppage_id, uint32_t log_offset) : 
+      vlen_(vlen), numa_id_(numa_id), ppage_id_(ppage_id), log_offset_(log_offset) {}
+  last_log_offest(uint64_t addr_info) : vlen_((addr_info & vlen_mask)>>48), numa_id_((addr_info & numa_id_mask)>>40), 
       ppage_id_((addr_info & ppage_id_mask)>>32), log_offset_(addr_info & log_offset_mask) {}
   uint64_t to_uint64_t_offset() {
-    return (((uint64_t)numa_id_) << 48) | (((uint64_t)ppage_id_) << 32) | ((uint64_t)log_offset_);
+    return ((((uint64_t)vlen_) << 48) | (((uint64_t)numa_id_) << 40) | (((uint64_t)ppage_id_) << 32) | ((uint64_t)log_offset_));
   }
 };
 
@@ -122,11 +121,10 @@ class Pair_t {
 /**
  * kv_log structure:
  * | op | version | key | value| last_log_offset| or
- * | op | version | key | vlen | value| last_log_offset| or
- * | op | version | klen | key | vlen | value| last_log_offset|
+ * | op | version | key | vlen | value| last_log_offset| 
 */
 
-#define NALI_VERSION_SHARDS 256
+#define NALI_VERSION_SHARDS 251
 
 #define MAX_LOF_FILE_ID 64
 // need a table to store all old logfile's start offset
@@ -243,7 +241,7 @@ public:
       }
     }
 
-    char *alloc_log(uint64_t hash_key, last_log_offest &log_info, size_t alloc_size = 32) {
+    char *alloc_log(uint64_t hash_key, last_log_offest &log_info, size_t alloc_size) {
       return ppage_[get_numa_id(thread_id)][hash_key % NALI_VERSION_SHARDS]->alloc(log_info, alloc_size);
     }
 
@@ -262,6 +260,7 @@ public:
       p.set_op(INSERT);
       last_log_offest log_info;
       char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
+      log_info.vlen_ = 8; // TODO:var length value
       p.store_persist(log_addr);
       return log_info.to_uint64_t_offset();
     }
@@ -272,7 +271,7 @@ public:
       p.set_op(DELETE);
       p.set_last_log_offest(old_log_offset);
       last_log_offest log_info;
-      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
+      char *log_addr = alloc_log(hash_key, log_info, 32);
       p.store_persist(log_addr);
       return;
     }
@@ -282,6 +281,7 @@ public:
       p.set_op(UPDATE);
       last_log_offest log_info;
       char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
+      log_info.vlen_ = 8; // TODO:var length value
       cur_log_addr = log_info.to_uint64_t_offset();
       return log_addr;
     }
