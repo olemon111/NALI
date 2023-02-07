@@ -135,7 +135,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 return log_kv_->get_addr(log_info, key_hash);
             }
 
-            bool search(const T& key, P* payload) {
+            bool search(const T& key, P &payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
                 
@@ -146,7 +146,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 #endif
 
                 uint64_t addr_info = 0;
-                bool ret = db_->search(key, &addr_info);
+                bool ret = db_->search(key, addr_info);
                 if (!ret)
                     return ret;
                 last_log_offest log_info(addr_info);
@@ -155,7 +155,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 #ifdef USE_PROXY
                     int8_t numa_id = log_info.numa_id_;
                     if (numa_id == get_numa_id(nali::thread_id)) {
-                        *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                        payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
                     } else {
                         // send read req to remote numa
                         read_req<P> *req_ = new read_req<P>((char*)pmem_addr, payload);
@@ -176,8 +176,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                                     }
                                     delete req_;
                                 } else { // do remote read self
-
-                                    *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                                    payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
                                 }
                                 return ret;
                             }
@@ -185,7 +184,9 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     }
                     check_read_queue();
                 #else
-                    *payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
+                    nali::Pair_t<T, P> pt;
+                    pt.load((char*)pmem_addr);
+                    payload = pt.value();
                 #endif
 
                 #ifdef USE_NALI_CACHE

@@ -13,6 +13,8 @@ namespace nali {
 
 // #define USE_PROXY
 
+#define VARVALUE
+
 extern thread_local size_t thread_id;
 
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
@@ -46,27 +48,13 @@ class Pair_t {
   OP_VERSION op : OP_BITS;
   OP_VERSION version : VERSION_BITS;
   KEY _key;
-  VALUE _value;
   union{
     last_log_offest _last_log_offset;
     uint64_t u_offset;
   };
+  VALUE _value;
 
-  Pair_t() {
-    _key = 0;
-    _value = 0;
-  };
-  Pair_t(char *p) {
-    auto pt = reinterpret_cast<Pair_t<KEY, VALUE> *>(p);
-    *this = *pt;
-  }
-  void load(char *p) {
-    auto pt = reinterpret_cast<Pair_t<KEY, VALUE> *>(p);
-    *this = *pt;
-  }
-  KEY key() { return _key; }
-  VALUE value() { return _value; }
-  size_t klen() { return sizeof(KEY); }
+  Pair_t() {}
   Pair_t(const KEY &k, const VALUE &v) {
     _key = k;
     _value = v;
@@ -74,31 +62,30 @@ class Pair_t {
   Pair_t(const KEY &k) {
     _key = k;
   }
-  void set_key(KEY k) { _key = k; }
 
+  KEY key() { return _key; }
+  VALUE value() { return _value; }
+  void load(char *p) {
+    auto pt = reinterpret_cast<Pair_t<KEY, VALUE> *>(p);
+    *this = *pt;
+  }
+  size_t klen() { return sizeof(KEY); }
+  size_t vlen() { return sizeof(VALUE); }
+  void set_key(KEY k) { _key = k; }
   void store_persist(void *addr) {
     auto p = reinterpret_cast<void *>(this);
     auto len = size();
     memcpy(addr, p, len);
     pmem_persist(addr, len);
   }
-  void store_persist_update(char *addr) { store_persist(addr); }
-  void store(void *addr) {
-    auto p = reinterpret_cast<void *>(this);
-    auto len = size();
-    memcpy(addr, p, len);
-  }
-  void set_empty() {
-    _key = 0;
-    _value = 0;
-  }
+
   void set_version(uint64_t old_version) { version = old_version + 1; }
   void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
-  void set_last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) { 
-    _last_log_offset.numa_id_ = numa_id;
-    _last_log_offset.ppage_id_ = ppage_id;
-    _last_log_offset.log_offset_ = log_offset;
-  }
+  // void set_last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) { 
+  //   _last_log_offset.numa_id_ = numa_id;
+  //   _last_log_offset.ppage_id_ = ppage_id;
+  //   _last_log_offset.log_offset_ = log_offset;
+  // }
   void set_last_log_offest(uint64_t log_offset) {
     u_offset = log_offset;
   }
@@ -108,9 +95,84 @@ class Pair_t {
     op = static_cast<uint16_t>(o);
     pmem_persist(reinterpret_cast<char *>(this), 8);
   }
-  // friend std::ostream &operator<<(std::ostream &out, Pair_t A);
+
   size_t size() {
     auto total_length = sizeof(OP_VERSION) + sizeof(KEY) + sizeof(VALUE) + sizeof(last_log_offest);
+    return total_length;
+  }
+  uint64_t next_old_log() { return u_offset; }
+};
+
+// support var value
+template<typename KEY>
+class Pair_t<KEY, std::string> {
+public:
+  OP_VERSION op : OP_BITS;
+  OP_VERSION version : VERSION_BITS;
+  KEY _key;
+  uint16_t _vlen;
+  union{
+    last_log_offest _last_log_offset;
+    uint64_t u_offset;
+  };
+  std::string _value;
+
+  // Pair_t(KEY k, char *v_ptr, size_t vlen) : _vlen(vlen) {
+  //   _key = k;
+  //   svalue.assign(v_ptr, _vlen);
+  // }
+  Pair_t() {}
+  Pair_t(const KEY &k, const std::string &v) : _vlen(v.size()){
+    _key = k;
+    _value = v;
+  }
+  Pair_t(const KEY &k) : _vlen(0) {
+    _key = k;
+  }
+
+  KEY key() { return _key; }
+  std::string value() { return _value; }
+  void load(char *p) {
+    auto pt = reinterpret_cast<Pair_t *>(p);
+    // _key = pt->_key;
+    _vlen = pt->_vlen;
+    // _value.reserve(_vlen+1);
+    _value.assign(p + sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t),
+                  _vlen);
+  }
+  size_t klen() { return sizeof(KEY); }
+  size_t vlen() { return _value.size(); }
+  void set_key(KEY k) { _key = k; }
+  void store_persist(char *addr) {
+    auto p = reinterpret_cast<void *>(this);
+    auto len = sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t);
+    memcpy(addr, p, len);
+    if (likely(_vlen) > 0) {
+      memcpy(addr+len, &_value[0], _vlen);
+    }
+    pmem_persist(addr, len + _vlen);
+  }
+
+  void set_version(uint64_t old_version) { version = old_version + 1; }
+  void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
+  // void set_last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) { 
+  //   _last_log_offset.numa_id_ = numa_id;
+  //   _last_log_offset.ppage_id_ = ppage_id;
+  //   _last_log_offset.log_offset_ = log_offset;
+  // }
+  void set_last_log_offest(uint64_t log_offset) {
+    u_offset = log_offset;
+  }
+
+  OP_t get_op() { return static_cast<OP_t>(op); }
+  void set_op_persist(OP_t o) {
+    op = static_cast<uint16_t>(o);
+    pmem_persist(reinterpret_cast<char *>(this), 8);
+  }
+
+  size_t size() {
+    auto total_length = sizeof(OP_VERSION) + sizeof(KEY) +
+                         sizeof(uint16_t) + sizeof(uint64_t) + _vlen;
     return total_length;
   }
   uint64_t next_old_log() { return u_offset; }
@@ -259,8 +321,8 @@ public:
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(INSERT);
       last_log_offest log_info;
-      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
-      log_info.vlen_ = 8; // TODO:var length value
+      log_info.vlen_ = p.vlen();
+      char *log_addr = alloc_log(hash_key, log_info, p.size());
       p.store_persist(log_addr);
       return log_info.to_uint64_t_offset();
     }
@@ -271,7 +333,7 @@ public:
       p.set_op(DELETE);
       p.set_last_log_offest(old_log_offset);
       last_log_offest log_info;
-      char *log_addr = alloc_log(hash_key, log_info, 32);
+      char *log_addr = alloc_log(hash_key, log_info, p.size());
       p.store_persist(log_addr);
       return;
     }
@@ -280,8 +342,8 @@ public:
       p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(UPDATE);
       last_log_offest log_info;
-      char *log_addr = alloc_log(hash_key, log_info, 32); // TODO:var length log
-      log_info.vlen_ = 8; // TODO:var length value
+      log_info.vlen_ = p.vlen();
+      char *log_addr = alloc_log(hash_key, log_info, p.size());
       cur_log_addr = log_info.to_uint64_t_offset();
       return log_addr;
     }

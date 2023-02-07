@@ -37,8 +37,8 @@ namespace nali {
                 return db_->Put(key, payload);
             }
 
-            bool search(const T& key, P* payload) {
-                return db_->Get(key, *payload); 
+            bool search(const T& key, P &payload) {
+                return db_->Get(key, payload); 
             }
 
             bool erase(const T& key, uint64_t *log_offset = nullptr) {

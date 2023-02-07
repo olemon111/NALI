@@ -103,7 +103,12 @@ size_t test_total_keys = 0;
 }
 
 using KEY_TYPE = size_t;
+
+#ifdef VARVALUE
+using VALUE_TYPE = std::string;
+#else
 using VALUE_TYPE = size_t;
+#endif
 
 void show_help(char* prog) {
   std::cout <<
@@ -219,12 +224,13 @@ int main(int argc, char *argv[]) {
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
   Tree<size_t, uint64_t> *real_db = nullptr;
+
   if  (dbName == "alexol") {
     // real_db = new nali::alexoldb<size_t, uint64_t>();
   } else if (dbName == "fastfair") {
     // real_db = new nali::fastfairdb<size_t, uint64_t>();
   } else if (dbName == "nali") {
-    real_db = new nali::nalidb<size_t, uint64_t>();
+      real_db = new nali::nalidb<size_t, uint64_t>();
   } else if (dbName == "art") {
     // real_db = new nali::artdb<size_t, uint64_t>();
   } else {
@@ -307,7 +313,11 @@ int main(int argc, char *argv[]) {
         size_t start_pos = idx * per_thread_size;
         for (size_t j = 0; j < size; ++j) {
           // std::cerr << "insert times: " << j  << "\n";
+          #ifdef VARVALUE
+          bool ret = db->insert(data_base[start_pos+j], std::to_string(data_base[start_pos+j]));
+          #else
           bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          #endif
           // if (!ret) {
           //     std::cout << "load error, key: " << data_base[start_pos+j] << ", pos: " << j << std::endl;
           //     assert(false);
@@ -365,7 +375,11 @@ int main(int argc, char *argv[]) {
         size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size + LOAD_SIZE;
         for (size_t j = 0; j < size; ++j) {
+          #ifdef VARVALUE
+          auto ret = db->insert(data_base[start_pos+j], std::to_string(data_base[start_pos+j]));
+          #else
           auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          #endif
           // if (ret != 1) {
           //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
           //     assert(0);
@@ -424,13 +438,20 @@ int main(int argc, char *argv[]) {
           int wrong_get = 0;
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
-              bool ret;
-              size_t value;
-              ret = db->search(data_base[start_pos+j], &value);
+              #ifdef VARVALUE
+                string value;
+                auto ret = db->search(data_base[start_pos+j], value);
+                if (!ret || (value != std::to_string(data_base[start_pos+j]) && value != std::to_string(0x19990627UL))) {
+                  wrong_get++;
+                }
+              #else
+                size_t value;
+                auto ret = db->search(data_base[start_pos+j], value);
+                if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+                  wrong_get++;
+                }
+              #endif
               
-              if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
-                wrong_get++;
-              }
               if(idx == 0 && (j + 1) % 100000 == 0) {
                 std::cerr << "Operate: " << j + 1 << '\r'; 
               }
@@ -500,15 +521,27 @@ int main(int argc, char *argv[]) {
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
               bool ret;
-              size_t value;
               if (random_ratio[start_pos+j] < insert_ratio) {
-                value = 0x19990627UL;
-                ret = db->update(data_base[start_pos+j], value);
+                size_t value = 0x19990627UL;
+                #ifdef VARVALUE
+                  ret = db->update(data_base[start_pos+j], std::to_string(value));
+                #else
+                  ret = db->update(data_base[start_pos+j], value);
+                #endif
               } else {
-                ret = db->search(data_base[start_pos+j], &value);
-                if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
-                  wrong_get++;
-                }
+                #ifdef VARVALUE
+                  string value;
+                  ret = db->search(data_base[start_pos+j], value);
+                  if (!ret || (value != std::to_string(data_base[start_pos+j]) && value != std::to_string(0x19990627UL))) {
+                    wrong_get++;
+                  }
+                #else
+                  size_t value;
+                  ret = db->search(data_base[start_pos+j], value);
+                  if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+                    wrong_get++;
+                  }
+                #endif
               }
               
               if(idx == 0 && (j + 1) % 100000 == 0) {
@@ -569,7 +602,11 @@ int main(int argc, char *argv[]) {
           nali::bindCore(nali::thread_id);
           size_t size = (idx == thread_id_arr.size()-1) ? (total_scan_ops-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
-          std::pair<uint64_t, uint64_t> *results = new std::pair<uint64_t, uint64_t>[scan];
+          #ifdef VARVALUE
+            auto *results = new std::pair<uint64_t, std::string>[scan];
+          #else
+            auto *results = new std::pair<uint64_t, uint64_t>[scan];
+          #endif
           int total_get = 0;
           int wrong_get = 0;
           for (int t = 0; t < 1; t++) {
@@ -577,9 +614,15 @@ int main(int argc, char *argv[]) {
               int scan_num = db->range_scan_by_size(data_base[start_pos+j], scan, results);
               total_get += scan_num;
               for (int s = 0; s < scan_num; s++) {
-                if (results[s].first != results[s].second && results[s].second != 0x19990627UL) {
-                  wrong_get++;
-                }
+                #ifdef VARVALUE
+                  if (std::to_string(results[s].first) != results[s].second && results[s].second != std::to_string(0x19990627UL)) {
+                    wrong_get++;
+                  }
+                #else
+                  if (results[s].first != results[s].second && results[s].second != 0x19990627UL) {
+                    wrong_get++;
+                  }
+                #endif
               }
               if(idx == 0 && (j + 1) % 100000 == 0) {
                 std::cerr << "Operate: " << j + 1 << '\r'; 
