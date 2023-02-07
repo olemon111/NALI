@@ -49,7 +49,9 @@ extern thread_local size_t random_thread_id[numa_max_node];
     static inline void scan_help(std::pair<T, P>* &result, const std::pair<T, uint64_t> *t_values, const std::vector<int> pos_arr, int *complete_elems) {
         for (int pos : pos_arr) {
             result[pos].first = t_values[pos].first;
-            result[pos].second = ((nali::Pair_t<T, P> *)t_values[pos].second)->value();
+            nali::Pair_t<T, P> pt;
+            pt.load((char*)t_values[pos].second);
+            result[pos].second = pt.value();
         }
         ADD(complete_elems, pos_arr.size());
     }
@@ -294,7 +296,9 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 // or do work itself
                 for (int i = 0; i < scan_size; i++) {
                     result[i].first = t_values[i].first;
-                    result[i].second = ((nali::Pair_t<T, P> *)t_values[i].second)->value();
+                    nali::Pair_t<T, P> pt;
+                    pt.load((char*)t_values[i].second);
+                    result[i].second = pt.value();
                 }
                 #endif
 
