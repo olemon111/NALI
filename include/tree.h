@@ -2,7 +2,6 @@
 
 #include <map>
 #include <cstdint>
-#include <nali_kvlog.h>
 
 template<class T, class P>
 class Tree;

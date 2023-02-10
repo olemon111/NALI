@@ -133,6 +133,7 @@ size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 100000000;
 size_t DELETE_SIZE = 100000000;
 int Loads_type = 3;
+size_t valuesize = 8;
 
 template<typename T>
 std::vector<T>load_data_from_osm(const std::string dataname)
@@ -152,6 +153,7 @@ int main(int argc, char *argv[]) {
     {"dbname",          required_argument, NULL, 0},
     {"workload",        required_argument, NULL, 0},
     {"loadstype",       required_argument, NULL, 0},
+    {"valuesize",       required_argument, NULL, 0},
     {"help",            no_argument,       NULL, 'h'},
     {NULL, 0, NULL, 0}
   };
@@ -172,7 +174,8 @@ int main(int argc, char *argv[]) {
           case 5: dbName = optarg; break;
           case 6: load_file = optarg; break;
           case 7: Loads_type = atoi(optarg); break;
-          case 8: show_help(argv[0]); return 0;
+          case 8: valuesize = atoi(optarg); break;
+          case 9: show_help(argv[0]); return 0;
           default: std::cerr << "Parse Argument Error!" << std::endl; abort();
         }
         break;
@@ -181,6 +184,10 @@ int main(int argc, char *argv[]) {
       default:  std::cout << (char)c << std::endl; abort();
     }
   }
+
+  // if (valuesize == 8) {
+  //   #undef VARVALUE
+  // }
 
   // numa0_thread_num = 0;
   // numa1_thread_num = 1;
@@ -312,7 +319,9 @@ int main(int argc, char *argv[]) {
         nali::bindCore(nali::thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size;
+        #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
+        #endif
         for (size_t j = 0; j < size; ++j) {
           // std::cerr << "insert times: " << j  << "\n";
           #ifdef VARVALUE
@@ -377,7 +386,9 @@ int main(int argc, char *argv[]) {
         nali::bindCore(nali::thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size + LOAD_SIZE;
+        #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
+        #endif
         for (size_t j = 0; j < size; ++j) {
           #ifdef VARVALUE
           memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);

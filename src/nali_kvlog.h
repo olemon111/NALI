@@ -5,6 +5,7 @@
 #include <libpmem.h>
 #include <atomic>
 #include <jemalloc/jemalloc.h>
+#include "tree.h"
 #include "nali_alloc.h"
 #include "xxhash.h"
 #include "nali_cache.h"
@@ -48,11 +49,11 @@ class Pair_t {
   OP_VERSION op : OP_BITS;
   OP_VERSION version : VERSION_BITS;
   KEY _key;
+  VALUE _value;
   union{
     last_log_offest _last_log_offset;
     uint64_t u_offset;
   };
-  VALUE _value;
 
   Pair_t() {}
   Pair_t(const KEY &k, const VALUE &v) {
@@ -65,7 +66,7 @@ class Pair_t {
 
   KEY key() { return _key; }
   VALUE value() { return _value; }
-  void load(char *p) {
+  void load(char *p, bool load_value = true) {
     auto pt = reinterpret_cast<Pair_t<KEY, VALUE> *>(p);
     *this = *pt;
   }
@@ -132,16 +133,18 @@ public:
 
   KEY key() { return _key; }
   std::string value() { return _value; }
-  void load(char *p) {
+  void load(char *p, bool load_value = true) {
     auto pt = reinterpret_cast<Pair_t *>(p);
-    // _key = pt->_key;
+    op = pt->op;
+    _key = pt->_key;
     _vlen = pt->_vlen;
-    // _value.reserve(_vlen+1);
+    if (load_value) {
     _value.assign(p + sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t),
                   _vlen);
   }
+  }
   size_t klen() { return sizeof(KEY); }
-  size_t vlen() { return _value.size(); }
+  size_t vlen() { return _vlen; }
   void set_key(KEY k) { _key = k; }
   void store_persist(char *addr) {
     auto p = reinterpret_cast<void *>(this);
@@ -213,12 +216,14 @@ struct ppage_header {
 // in dram, metadata for ppage
 class __attribute__((aligned(64))) PPage {
   public:
-    PPage(size_t numa_id, size_t hash_id) {
+    PPage(size_t numa_id, size_t hash_id, bool recovery = false) : start_addr_(NULL) {
       header_.numa_id = numa_id;
       header_.hash_id_ = hash_id;
+      if (!recovery) {
       header_.ppage_id++;
       start_addr_ = alloc_new_ppage(numa_id, hash_id, header_.ppage_id);
     }
+    } 
 
     void *operator new(size_t size) {
       return aligned_alloc(64, size);
@@ -290,13 +295,13 @@ struct __attribute__((__aligned__(64))) version_alloctor {
 template <class T, class P>
 class LogKV {
 public:
-    LogKV() {
+    LogKV(bool recovery) {
       init_numa_map();
       g_ppage_s_addr_arr_ = new global_ppage_meta();
       // for each numa node, create log files
       for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
         for (int hash_id = 0; hash_id < NALI_VERSION_SHARDS; hash_id++) {
-          PPage *ppage = new PPage(numa_id, hash_id);;
+          PPage *ppage = new PPage(numa_id, hash_id, recovery);
           ppage_[numa_id][hash_id] = ppage;
           g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][0] = ppage->start_addr_;
         }
@@ -313,6 +318,112 @@ public:
 
     char *get_page_start_addr(int numa_id, int hash_id, int logpage_id) {
       return g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][logpage_id];
+    }
+
+    char *get_page_start_addr(int hash_id, const last_log_offest &log_info) {
+      return g_ppage_s_addr_arr_->start_addr_arr_[log_info.numa_id_][hash_id][log_info.ppage_id_];
+    }
+
+    void set_page_start_addr(int numa_id, int hash_id, int logpage_id, char *start_addr) {
+      g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][logpage_id] = start_addr;
+      // update ppage id
+      int page_id = ppage_[numa_id][hash_id]->header_.ppage_id;
+      if (page_id < logpage_id) {
+        ppage_[numa_id][hash_id]->header_.ppage_id = logpage_id;
+      }
+    }
+
+    // TODO:并发恢复
+    void recovery_logkv(Tree<T, uint64_t> *db_, size_t recovery_thread_num) {
+      // read all pmem log file, each thread scan a range hash log from newest to oldest
+      // mmap all log file and set g_ppage_s_addr_arr_
+      // new PPage and set PPage newest page id 
+      std::vector<int> page_ids(NALI_VERSION_SHARDS, -1);
+      for (int i = 0; i < numa_node_num; i++) {
+          std::string dirname = "/mnt/pmem" + std::to_string(i) + "/zzy";
+          std::vector<std::string> files;
+          loadfiles(dirname, files);
+          for (const std::string &file : files) {
+            size_t pos0 = file.find("nali_") + strlen("nali_");
+            size_t pos1 = file.find("_", pos0) + strlen("_");
+            pos0 = file.find("_", pos1);
+            size_t hash_id = std::stoi(file.substr(pos1, pos0-pos1));
+            pos0 += strlen("_");
+            pos1 = file.find("_", pos0);
+            size_t ppage_id = std::stoi(file.substr(pos0, pos1-pos0));
+            size_t mapped_len;
+            int is_pmem;
+            void *ptr = nullptr;
+            if((ptr = pmem_map_file(file.c_str(), PPAGE_SIZE, PMEM_FILE_CREATE, 0666,
+                                    &mapped_len, &is_pmem)) == NULL) {
+                std::cout << "mmap pmem file fail" << std::endl;
+                exit(1);
+            }
+            set_page_start_addr(i, hash_id, ppage_id, (char*)ptr);
+          }
+      }
+      // for each log:
+        // 1. if log is TRASH, skip 
+        // 2. else, backtrack it's older logs and set TRASH
+            // for insert or update log, do insert(XXX:set struct last_log_offest)
+            // for delete log, set TRASH
+        // for using ppage, update its ppage_header
+      for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+        for (int hash_id = 0; hash_id < NALI_VERSION_SHARDS; hash_id++) {
+          for (int ppage_id = ppage_[numa_id][hash_id]->header_.ppage_id; ppage_id >= 0; ppage_id--) {
+            size_t log_offset = 0;
+            char *addr = g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][ppage_id];
+            while (addr && log_offset < PPAGE_SIZE) {
+              nali::Pair_t<T, P> *log_ = (Pair_t<T, P> *)((addr+log_offset));
+              if (log_->op != OP_t::TRASH) {
+                std::vector<Pair_t<T, P> *> old_log;
+                if (log_->op == OP_t::DELETE) {
+                  old_log.push_back(log_);
+                  uint64_t old_log_offset;
+                  bool ret = db_->erase(log_->key(), &old_log_offset);
+                } else {
+                  //insert into dram index
+                  bool ret = db_->insert(log_->key(), log_->u_offset);
+                }
+                uint64_t next_old_log = log_->next_old_log();
+                nali::Pair_t<T, P> *tmplog_ = nullptr;
+                while (next_old_log != UINT64_MAX) { // 最old的日志，next log地址为全1
+                  last_log_offest log_info(next_old_log);
+                  char *log_start_addr = get_page_start_addr(hash_id, log_info);
+                  if (nullptr == log_start_addr) {
+                    break;
+                  } else {
+                    tmplog_ = (nali::Pair_t<T, P> *)(log_start_addr + log_info.log_offset_);
+                    if (tmplog_->get_op() == OP_t::TRASH)
+                      break;
+                    old_log.push_back(tmplog_);
+                    next_old_log = tmplog_->next_old_log();
+                  }
+                }
+                for (int p = old_log.size(); p >= 0; p--) {
+                  tmplog_ = old_log[p];
+                  tmplog_->set_op_persist(OP_t::TRASH);
+                }
+              }
+              
+              #ifdef VARVALUE
+                if (log_->vlen() == UINT16_MAX) {
+                  // log is end
+                  break;
+                }
+                log_offset += log_->size();
+              #else
+                log_offset += 32;
+              #endif
+            }
+            if (ppage_id == ppage_[numa_id][hash_id]->header_.ppage_id) {
+              // update ppage sz_allocated
+              ppage_[numa_id][hash_id]->header_.sz_allocated = log_offset;
+            }
+          }
+        }
+      }
+      
     }
 
     // 返回log相对地址
@@ -346,6 +457,30 @@ public:
       char *log_addr = alloc_log(hash_key, log_info, p.size());
       cur_log_addr = log_info.to_uint64_t_offset();
       return log_addr;
+    }
+
+  private:
+    // 读出DirPath目录下的所有文件
+    void loadfiles(std::string DirPath, std::vector<std::string> &files) {
+        DIR *pDir;
+        struct dirent* ptr;
+        if(!(pDir = opendir(DirPath.c_str())))
+        {
+            std::cout<< "Folder " << DirPath << " doesn't Exist!" << std::endl;
+            return;
+        }
+
+        while((ptr = readdir(pDir)) != 0) 
+        {
+            if (strcmp(ptr->d_name, ".") != 0 && strcmp(ptr->d_name, "..") != 0)
+            {
+                files.push_back(DirPath + "/" + ptr->d_name);
+            }
+        }
+        // sort(files.begin(),files.end(),[&](const string &a, const string &b){
+        //     return a > b;
+        // });
+        closedir(pDir);
     }
 
   private:

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <sys/types.h>
+#include <dirent.h>
+#include <string>
+
 #include "tree.h"
 #include "nali_cache.h"
 #include "nali_kvlog.h"
@@ -60,8 +64,8 @@ extern thread_local size_t random_thread_id[numa_max_node];
     class logdb : public Tree<T, P> {
         public:
             typedef std::pair<T, P> V;
-            logdb(Tree <T, uint64_t> *db, const std::vector<std::vector<int>> &thread_arr) : db_(db) {
-                log_kv_ = new nali::LogKV<T, P>();
+            logdb(Tree<T, uint64_t> *db, const std::vector<std::vector<int>> &thread_arr, bool recovery = false, size_t recovery_thread_num = 1) : db_(db) {
+                log_kv_ = new nali::LogKV<T, P>(recovery);
                 thread_ids = thread_arr;
                 for (int i = 0; i < numa_node_num; i++)
                     thread_pool_[i] = new ThreadPool(i, PER_THREAD_POOL_THREADS);
@@ -69,6 +73,9 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 cache_ = new nali::nali_lrucache<T, P>();
                 #endif
 
+                if (recovery) {
+                    log_kv_->recovery_logkv(db, recovery_thread_num);
+                }
                 // std::atomic<int> gc_thread_id(0);
                 // const int gc_thread_num = 8;
                 // const int per_thread_part = NALI_VERSION_SHARDS / gc_thread_num;
@@ -346,7 +353,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                         for (int j = begin_pos; j < end_pos; j++) {
                             for (int k = 0; k < numa_node_num; k++) {
                                 char *start_addr = log_kv_->get_page_start_addr(k, j, i);
-                                for (int t = 0; t < PPAGE_SIZE; t += 32) {
+                                for (int t = 0; t < PPAGE_SIZE; t += 32) { // TODO:var value log
                                     Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+t);
                                     OP_t log_op_ = log_->get_op();
                                     if (log_op_ == OP_t::INSERT || log_op_ == OP_t::UPDATE || log_op_ == OP_t::DELETE) {
@@ -369,6 +376,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                                             if (log_->get_op() == OP_t::TRASH)
                                                 break;
                                             old_log.push_back(log_);
+                                            next_old_log = log_->next_old_log();
                                         }
                                         for (int p = old_log.size(); p >= 0; p--) {
                                             log_ = old_log[p];
