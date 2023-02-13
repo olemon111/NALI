@@ -139,9 +139,9 @@ public:
     _key = pt->_key;
     _vlen = pt->_vlen;
     if (load_value) {
-    _value.assign(p + sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t),
-                  _vlen);
-  }
+      _value.assign(p + sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t),
+                    _vlen);
+    }
   }
   size_t klen() { return sizeof(KEY); }
   size_t vlen() { return _vlen; }
@@ -220,9 +220,9 @@ class __attribute__((aligned(64))) PPage {
       header_.numa_id = numa_id;
       header_.hash_id_ = hash_id;
       if (!recovery) {
-      header_.ppage_id++;
-      start_addr_ = alloc_new_ppage(numa_id, hash_id, header_.ppage_id);
-    }
+        header_.ppage_id++;
+        start_addr_ = alloc_new_ppage(numa_id, hash_id, header_.ppage_id);
+      }
     } 
 
     void *operator new(size_t size) {
@@ -333,7 +333,6 @@ public:
       }
     }
 
-    // TODO:并发恢复
     void recovery_logkv(Tree<T, uint64_t> *db_, size_t recovery_thread_num) {
       // read all pmem log file, each thread scan a range hash log from newest to oldest
       // mmap all log file and set g_ppage_s_addr_arr_
@@ -368,62 +367,73 @@ public:
             // for insert or update log, do insert(XXX:set struct last_log_offest)
             // for delete log, set TRASH
         // for using ppage, update its ppage_header
-      for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
-        for (int hash_id = 0; hash_id < NALI_VERSION_SHARDS; hash_id++) {
-          for (int ppage_id = ppage_[numa_id][hash_id]->header_.ppage_id; ppage_id >= 0; ppage_id--) {
-            size_t log_offset = 0;
-            char *addr = g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][ppage_id];
-            while (addr && log_offset < PPAGE_SIZE) {
-              nali::Pair_t<T, P> *log_ = (Pair_t<T, P> *)((addr+log_offset));
-              if (log_->op != OP_t::TRASH) {
-                std::vector<Pair_t<T, P> *> old_log;
-                if (log_->op == OP_t::DELETE) {
-                  old_log.push_back(log_);
-                  uint64_t old_log_offset;
-                  bool ret = db_->erase(log_->key(), &old_log_offset);
-                } else {
-                  //insert into dram index
-                  bool ret = db_->insert(log_->key(), log_->u_offset);
-                }
-                uint64_t next_old_log = log_->next_old_log();
-                nali::Pair_t<T, P> *tmplog_ = nullptr;
-                while (next_old_log != UINT64_MAX) { // 最old的日志，next log地址为全1
-                  last_log_offest log_info(next_old_log);
-                  char *log_start_addr = get_page_start_addr(hash_id, log_info);
-                  if (nullptr == log_start_addr) {
-                    break;
-                  } else {
-                    tmplog_ = (nali::Pair_t<T, P> *)(log_start_addr + log_info.log_offset_);
-                    if (tmplog_->get_op() == OP_t::TRASH)
-                      break;
-                    old_log.push_back(tmplog_);
-                    next_old_log = tmplog_->next_old_log();
+      std::vector<std::thread> recovery_threads;
+      std::atomic_int thread_idx_count(0);
+      int perthread_hash_nums = NALI_VERSION_SHARDS / recovery_thread_num;
+      for (int thread_cnt = 0; thread_cnt < recovery_thread_num; thread_cnt++) {
+        int idx = thread_idx_count.fetch_add(1);
+        nali::thread_id = idx;
+        recovery_threads.emplace_back([&](){
+          int begin_hashid = nali::thread_id * perthread_hash_nums;
+          int end_hashid = (nali::thread_id == recovery_thread_num-1) ? NALI_VERSION_SHARDS : (begin_hashid + perthread_hash_nums);
+          for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+            for (int hash_id = begin_hashid; hash_id < end_hashid; hash_id++) {
+              for (int ppage_id = ppage_[numa_id][hash_id]->header_.ppage_id; ppage_id >= 0; ppage_id--) {
+                size_t log_offset = 0;
+                char *addr = g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][ppage_id];
+                while (addr && log_offset < PPAGE_SIZE) {
+                  nali::Pair_t<T, P> *log_ = (Pair_t<T, P> *)((addr+log_offset));
+                  // log_->load((char*)(log_), false);
+                  if (log_->op != OP_t::TRASH) {
+                    std::vector<Pair_t<T, P> *> old_log;
+                    if (log_->op == OP_t::DELETE) {
+                      old_log.push_back(log_);
+                      uint64_t old_log_offset;
+                      bool ret = db_->erase(log_->key(), &old_log_offset);
+                    } else {
+                      //insert into dram index
+                      bool ret = db_->insert(log_->key(), log_->u_offset);
+                    }
+                    uint64_t next_old_log = log_->next_old_log();
+                    nali::Pair_t<T, P> *tmplog_ = nullptr;
+                    while (next_old_log != UINT64_MAX) { // 最old的日志，next log地址为全1
+                      last_log_offest log_info(next_old_log);
+                      char *log_start_addr = get_page_start_addr(hash_id, log_info);
+                      if (nullptr == log_start_addr) { // log已经被回收
+                        break;
+                      } else {
+                        tmplog_ = (nali::Pair_t<T, P> *)(log_start_addr + log_info.log_offset_);
+                        if (tmplog_->get_op() == OP_t::TRASH) // log已经被回收
+                          break;
+                        old_log.push_back(tmplog_);
+                        next_old_log = tmplog_->next_old_log();
+                      }
+                    }
+                    for (int p = old_log.size(); p >= 0; p--) {
+                      tmplog_ = old_log[p];
+                      tmplog_->set_op_persist(OP_t::TRASH);
+                    }
                   }
+                  
+                  #ifdef VARVALUE
+                    if (log_->vlen() == UINT16_MAX) {
+                      // log is end
+                      break;
+                    }
+                    log_offset += log_->size();
+                  #else
+                    log_offset += 32;
+                  #endif
                 }
-                for (int p = old_log.size(); p >= 0; p--) {
-                  tmplog_ = old_log[p];
-                  tmplog_->set_op_persist(OP_t::TRASH);
+                if (ppage_id == ppage_[numa_id][hash_id]->header_.ppage_id) {
+                  // update ppage sz_allocated
+                  ppage_[numa_id][hash_id]->header_.sz_allocated = log_offset;
                 }
               }
-              
-              #ifdef VARVALUE
-                if (log_->vlen() == UINT16_MAX) {
-                  // log is end
-                  break;
-                }
-                log_offset += log_->size();
-              #else
-                log_offset += 32;
-              #endif
-            }
-            if (ppage_id == ppage_[numa_id][hash_id]->header_.ppage_id) {
-              // update ppage sz_allocated
-              ppage_[numa_id][hash_id]->header_.sz_allocated = log_offset;
             }
           }
-        }
+        });
       }
-      
     }
 
     // 返回log相对地址
