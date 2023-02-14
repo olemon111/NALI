@@ -102,10 +102,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     dram_kvs[i].first = values[i].first;
                     dram_kvs[i].second = log_offset;
                 }
-                // db_->bulk_load(dram_kvs, num_keys);
-                for (int i = 0; i < num_keys; i++) {
-                    db_->insert(dram_kvs[i].first, dram_kvs[i].second);
-                }
+                db_->bulk_load(dram_kvs, num_keys);
                 delete [] dram_kvs;
             }
 

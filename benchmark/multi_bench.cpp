@@ -235,13 +235,9 @@ int main(int argc, char *argv[]) {
   Tree<size_t, uint64_t> *real_db = nullptr;
 
   if  (dbName == "alexol") {
-    // real_db = new nali::alexoldb<size_t, uint64_t>();
-  } else if (dbName == "fastfair") {
-    // real_db = new nali::fastfairdb<size_t, uint64_t>();
+    real_db = new nali::alexoldb<size_t, uint64_t>();
   } else if (dbName == "nali") {
       real_db = new nali::nalidb<size_t, uint64_t>();
-  } else if (dbName == "art") {
-    // real_db = new nali::artdb<size_t, uint64_t>();
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);

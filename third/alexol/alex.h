@@ -1334,12 +1334,12 @@ public:
     } while (true);
   }
 
-  bool update(const T &key, const P &payload) const {
+  bool update(const T &key, const P &payload, uint64_t *log_offset) const {
     EpochGuard guard;
     do {
       data_node_type *leaf = get_leaf(key);
       bool updated = false;
-      auto ret_flag = leaf->update(key, payload, &updated);
+      auto ret_flag = leaf->update(key, payload, &updated, log_offset);
       if (ret_flag == true)
         return updated; // ret_flag == true means no concurrency conlict occurs
     } while (true);
@@ -2632,14 +2632,14 @@ public:
 
   // Erases all keys with a certain key value
   // Make it concurrent
-  int erase(const T &key) {
+  int erase(const T &key, uint64_t *log_offset) {
     EpochGuard guard;
     int num_erased = 0;
     int ret_flag = 0;
     data_node_type *leaf;
     do {
       leaf = get_leaf(key);
-      ret_flag = leaf->erase(key, num_erased);
+      ret_flag = leaf->erase(key, num_erased, log_offset);
       if (ret_flag > 0)
         break; // ret_flag > 0 means no concurrency conlict occurs
     } while (true);

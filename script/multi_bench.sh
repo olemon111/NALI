@@ -68,7 +68,7 @@ function Run() {
 loadnum=400000000
 opnum=10000000
 scansize=4000000
-dbname="nali"
+dbname="alexol"
 valuesize=8 # if value size == 8, undef varvalue
 # zipfan=0 # if zipfan = 0, is uniform
 for thread in 16

@@ -1603,7 +1603,7 @@ public:
     return true;
   }
 
-  bool update(const T &key, const P &payload, bool *updated) {
+  bool update(const T &key, const P &payload, bool *updated, uint64_t *log_offset) {
     if (!try_get_lock()) {
       return false;
     }
@@ -1613,6 +1613,7 @@ public:
     // (instead of a gap)
     int pos = exponential_search_upper_bound(predicted_pos, key) - 1;
     if (!(pos < 0 || !key_equal(ALEX_DATA_NODE_KEY_AT(pos), key))) {
+      *log_offset = ALEX_DATA_NODE_PAYLOAD_AT(pos);
       ALEX_DATA_NODE_PAYLOAD_AT(pos) = payload;
       *updated = true;
     } else {
@@ -2497,7 +2498,7 @@ public:
   // 0 means has concurrency race, need retry
   // 1 means succeeded
   // 2 means succeeded but need contraction
-  int erase(const T &key, int &count) {
+  int erase(const T &key, int &count, uint64_t *log_offset) {
     if (!try_get_lock()) {
       return 0;
     }
@@ -2519,6 +2520,7 @@ public:
     }
     pos--;
     while (pos >= 0 && key_equal(ALEX_DATA_NODE_KEY_AT(pos), key)) {
+      *log_offset = ALEX_DATA_NODE_PAYLOAD_AT(pos);
       ALEX_DATA_NODE_KEY_AT(pos) = next_key;
       num_erased += check_exists(pos);
       unset_bit(pos);
