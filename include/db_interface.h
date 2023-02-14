@@ -4,11 +4,7 @@
 #include "util/utils.h"
 #include "../src/nali.h"
 #include "../third/alexol/alex.h"
-// #include "../third/ALEX/alex.h"
-#include "../third/FAST_FAIR/btree.h"
 
-// #include "../third/ARTSynchronized/OptimisticLockCoupling/Tree.h"
-// #include"../third/ARTSynchronized/OptimisticLockCoupling/Tree.cpp"
 #include "tbb/tbb.h"
 #include <utility>
 

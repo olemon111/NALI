@@ -5,7 +5,6 @@
 #include <string>
 
 #include "tree.h"
-#include "nali_cache.h"
 #include "nali_kvlog.h"
 #include "util/utils.h"
 #include "util/xxhash.h"
@@ -69,9 +68,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 thread_ids = thread_arr;
                 for (int i = 0; i < numa_node_num; i++)
                     thread_pool_[i] = new ThreadPool(i, PER_THREAD_POOL_THREADS);
-                #ifdef USE_NALI_CACHE
-                cache_ = new nali::nali_lrucache<T, P>();
-                #endif
 
                 if (recovery) {
                     log_kv_->recovery_logkv(db, recovery_thread_num);
@@ -94,23 +90,23 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     t.join();
                 delete db_;
                 delete log_kv_;
-                #ifdef USE_NALI_CACHE
-                delete cache_;
-                #endif
             }
 
+            // TODO: 多个NUMA平分keys
             void bulk_load(const V values[], int num_keys) {
-                // std::pair<T, uint64_t> *t_values;
-                // t_values = new std::pair<T, uint64_t>[num_keys];
-                // for (int i = 0; i < num_keys; i++) {
-                //     T key = values[i].first;
-                //     uint64_t key_hash_ = XXH3_64bits(&key, sizeof(key));
-                //     uint64_t res = log_kv_->insert(key, values[i].second, key_hash_);
-                //     t_values[i].first = key;
-                //     t_values[i].second = res;
-                // }
-                // db_->bulk_load(t_values, num_keys);
-                // delete [] t_values;
+                std::pair<T, uint64_t> *dram_kvs = new std::pair<T, uint64_t>[num_keys];
+                for (int i = 0; i < num_keys; i++) {
+                    const T kkk = values[i].first;
+                    uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                    uint64_t log_offset = log_kv_->insert(values[i].first, values[i].second, key_hash);
+                    dram_kvs[i].first = values[i].first;
+                    dram_kvs[i].second = log_offset;
+                }
+                // db_->bulk_load(dram_kvs, num_keys);
+                for (int i = 0; i < num_keys; i++) {
+                    db_->insert(dram_kvs[i].first, dram_kvs[i].second);
+                }
+                delete [] dram_kvs;
             }
 
             // dram index kv pair: <key, vlog's vlen+numa_id+file_num+offest>
@@ -122,10 +118,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
 
                 #ifdef USE_PROXY
                 check_read_queue();
-                #endif
-
-                #ifdef USE_NALI_CACHE
-                cache_->insert(key, payload, key_hash);
                 #endif
 
                 return ret;
@@ -147,12 +139,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
             bool search(const T& key, P &payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-                
-                #ifdef USE_NALI_CACHE
-                bool in_cache = cache_->search(key, payload, key_hash);
-                if (in_cache)
-                    return true;
-                #endif
 
                 uint64_t addr_info = 0;
                 bool ret = db_->search(key, addr_info);
@@ -196,14 +182,15 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     nali::Pair_t<T, P> pt;
                     pt.load((char*)pmem_addr);
                     payload = pt.value();
+                    
+                    // #ifdef VARVALUE
+                    //     // std::string v;
+                    //     payload.assign(((char*)pmem_addr) + 28, log_info.vlen_);
+                    // #else
+                        // payload = ((nali::Pair_t<T, P>*)pmem_addr)->_value;
+                    // #endif
                 #endif
 
-                #ifdef USE_NALI_CACHE
-                // if not exist in cache, put into cache
-                if (in_cache == false) {
-                    cache_->insert(key, *payload, key_hash);
-                }
-                #endif
                 return ret;
             }
 
@@ -218,9 +205,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 check_read_queue();
                 #endif
 
-                #ifdef USE_NALI_CACHE
-                cache_->erase(key, key_hash);
-                #endif
                 return ret;
             }
 
@@ -234,10 +218,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
 
                 #ifdef USE_PROXY
                 check_read_queue();
-                #endif
-
-                #ifdef USE_NALI_CACHE
-                cache_->insert(key, payload, key_hash);
                 #endif
 
                 uint64_t _log_offset;
@@ -255,9 +235,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 check_read_queue();
                 #endif
 
-                #ifdef USE_NALI_CACHE
-                cache_->update(key, payload, key_hash);
-                #endif
                 return ret;
             }
 
@@ -403,10 +380,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
             std::vector<std::thread> gc_threads;
             #ifdef USE_PROXY
             moodycamel::ConcurrentQueue<read_req<P>*> readreq_queue_[max_thread_num];
-            #endif
-
-            #ifdef USE_NALI_CACHE
-            nali::nali_lrucache<T, P> *cache_;
             #endif
     };
 }

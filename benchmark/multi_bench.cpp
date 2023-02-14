@@ -20,7 +20,7 @@
 #include "util/sosd_util.h"
 
 // #define STATISTIC_PMEM_INFO 
-// #define USE_BULKLOAD
+#define USE_BULKLOAD
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"
@@ -128,6 +128,7 @@ std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
 int numa0_thread_num = 16;
 int numa1_thread_num = 16;
+size_t BULKLOAD_SIZE = 0;
 size_t LOAD_SIZE   = 390000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 100000000;
@@ -270,23 +271,23 @@ int main(int argc, char *argv[]) {
     #ifdef STATISTIC_PMEM_INFO
     pin_start(&nvdimm_counter_begin);
     #endif
-    int init_size = 10000000;
-    auto values = new std::pair<uint64_t, uint64_t>[init_size];
+    BULKLOAD_SIZE = 10000000;
+    auto values = new std::pair<uint64_t, uint64_t>[BULKLOAD_SIZE];
     // size_t start_idx = LOAD_SIZE + PUT_SIZE; // TODO: if has mixed test, need add mix put size
     size_t start_idx = 0;
-    for (int i = 0; i < init_size; i++) {
+    for (int i = 0; i < BULKLOAD_SIZE; i++) {
       values[i].first = data_base[i+start_idx];
       values[i].second = data_base[i+start_idx];
     }
     if (dbName != "nali") {
-      std::sort(values, values + init_size,
+      std::sort(values, values + BULKLOAD_SIZE,
         [](auto const& a, auto const& b) { return a.first < b.first; });
     }
 
     LOG_INFO("@@@@ BULK LOAD START @@@@");
     nali::thread_id = 0; // thread0 do bulkload
     nali::bindCore(nali::thread_id);
-    db->bulk_load(values, init_size);
+    db->bulk_load(values, BULKLOAD_SIZE);
     LOG_INFO("@@@@ BULK LOAD END @@@@");
     #ifdef STATISTIC_PMEM_INFO
     pin_end(&nvdimm_counter_end);
@@ -318,7 +319,7 @@ int main(int argc, char *argv[]) {
         nali::thread_id = thread_id_arr[idx];
         nali::bindCore(nali::thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
-        size_t start_pos = idx * per_thread_size;
+        size_t start_pos = idx * per_thread_size + BULKLOAD_SIZE;
         #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
         #endif
@@ -385,7 +386,7 @@ int main(int argc, char *argv[]) {
         nali::thread_id = thread_id_arr[idx];
         nali::bindCore(nali::thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
-        size_t start_pos = idx * per_thread_size + LOAD_SIZE;
+        size_t start_pos = idx * per_thread_size + LOAD_SIZE + BULKLOAD_SIZE;
         #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
         #endif
@@ -425,7 +426,7 @@ int main(int argc, char *argv[]) {
 
   {
      // Get
-    Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+    Random get_rnd(0, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
     for (size_t i = 0; i < GET_SIZE; ++i) {
       int idx = get_rnd.Next();
       std::swap(data_base[i], data_base[idx]);

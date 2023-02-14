@@ -8,13 +8,12 @@
 #include "tree.h"
 #include "nali_alloc.h"
 #include "xxhash.h"
-#include "nali_cache.h"
 #include "rwlock.h"
 namespace nali {
 
 // #define USE_PROXY
 
-#define VARVALUE
+// #define VARVALUE
 
 extern thread_local size_t thread_id;
 
@@ -79,7 +78,7 @@ class Pair_t {
     memcpy(addr, p, len);
     pmem_persist(addr, len);
   }
-
+  constexpr size_t value_offset() { return sizeof(OP_VERSION) + sizeof(KEY); }
   void set_version(uint64_t old_version) { version = old_version + 1; }
   void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
   // void set_last_log_offest(uint16_t numa_id, uint16_t ppage_id, uint32_t log_offset) { 
@@ -155,6 +154,7 @@ public:
     }
     pmem_persist(addr, len + _vlen);
   }
+  constexpr size_t value_offset() { return sizeof(OP_VERSION) + sizeof(KEY) + sizeof(uint16_t) + sizeof(uint64_t); }
 
   void set_version(uint64_t old_version) { version = old_version + 1; }
   void set_op(OP_t o) { op = static_cast<uint16_t>(o); }
