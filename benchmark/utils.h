@@ -6,8 +6,8 @@
 
 #include "zipf.h"
 #include "general_zipf.h"
-#include "util/uniform.h"
-#include "util/logging.h"
+#include "uniform.h"
+#include "logging.h"
 #include <iostream>
 #include <fstream>
 #include <algorithm>

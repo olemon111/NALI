@@ -10,7 +10,7 @@
 
 #include <cstdint>
 #include <iostream>
-
+#include "nali_alloc.h"
 namespace alexol {
 
 static constexpr const uint32_t kCacheLineSize = 64;

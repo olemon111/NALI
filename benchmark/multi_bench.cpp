@@ -14,7 +14,7 @@
 #include <x86intrin.h>
 
 #include "utils.h"
-#include "util/logging.h"
+#include "logging.h"
 #include "logdb.h"
 #include "db_interface.h"
 #include "util/sosd_util.h"
@@ -90,6 +90,9 @@ size_t physical_memory_used_by_process()
     fclose(file);
     return result;
 }
+
+int parallel_merge_worker_num = 16; // param for dptree
+PMEMobjpool **pop = nullptr;
 
 namespace nali {
 
@@ -191,7 +194,7 @@ int main(int argc, char *argv[]) {
   // }
 
   // numa0_thread_num = 0;
-  numa1_thread_num = 0;
+  // numa1_thread_num = 0;
   // LOAD_SIZE = 10000000;
   // PUT_SIZE = 10000000;
   // GET_SIZE = 10000000;
@@ -257,6 +260,9 @@ int main(int argc, char *argv[]) {
     db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
   } else if (dbName == "utree") {
     real_db = new nali::utree_db<size_t, uint64_t>();
+    db = real_db;
+  } else if (dbName == "dptree") {
+    real_db = new nali::dptree_db<size_t, uint64_t>();
     db = real_db;
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());

@@ -18,9 +18,6 @@
 
 #include "nali_alloc.h"
 
-extern size_t pool_size_;
-extern const char *pool_path_;
-
 #ifdef PMEM
 #define USE_PMDK
 #include <libpmemobj.h>
@@ -93,7 +90,7 @@ void list_node_t::printAll(void) {
 POBJ_LAYOUT_BEGIN(btree);
 POBJ_LAYOUT_TOID(btree, list_node_t);
 POBJ_LAYOUT_END(btree);
-PMEMobjpool **pop;
+extern PMEMobjpool **pop;
 #endif
 // void *alloc(size_t size) {
 // #ifdef USE_PMDK
