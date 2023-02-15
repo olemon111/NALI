@@ -20,7 +20,7 @@
 #include "util/sosd_util.h"
 
 // #define STATISTIC_PMEM_INFO 
-#define USE_BULKLOAD
+// #define USE_BULKLOAD
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"
@@ -129,10 +129,10 @@ std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 int numa0_thread_num = 16;
 int numa1_thread_num = 16;
 size_t BULKLOAD_SIZE = 0;
-size_t LOAD_SIZE   = 390000000;
+size_t LOAD_SIZE   = 100000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 100000000;
-size_t DELETE_SIZE = 100000000;
+size_t DELETE_SIZE = 10000000;
 int Loads_type = 3;
 size_t valuesize = 8;
 
@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
 
   int c;
   int opt_idx;
-  std::string  dbName= "nali";
+  std::string  dbName= "utree";
   std::string  load_file= "";
   while ((c = getopt_long(argc, argv, "s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
   // }
 
   // numa0_thread_num = 0;
-  // numa1_thread_num = 1;
+  numa1_thread_num = 0;
   // LOAD_SIZE = 10000000;
   // PUT_SIZE = 10000000;
   // GET_SIZE = 10000000;
@@ -234,16 +234,6 @@ int main(int argc, char *argv[]) {
 
   Tree<size_t, uint64_t> *real_db = nullptr;
 
-  if  (dbName == "alexol") {
-    real_db = new nali::alexoldb<size_t, uint64_t>();
-  } else if (dbName == "nali") {
-      real_db = new nali::nalidb<size_t, uint64_t>();
-  } else {
-    LOG_INFO("not defined db: %s", dbName.c_str());
-    assert(false);
-  }
-  assert(real_db);
-
   // generate thread_ids
   assert(numa0_thread_num >= 0 && numa0_thread_num <=16);
   assert(numa1_thread_num >= 0 && numa1_thread_num <=16);
@@ -258,7 +248,22 @@ int main(int argc, char *argv[]) {
     thread_id_arr.push_back(16+i);
   }
 
-  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  Tree<KEY_TYPE, VALUE_TYPE> *db = nullptr;
+  if  (dbName == "alexol") {
+    real_db = new nali::alexoldb<size_t, uint64_t>();
+    db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  } else if (dbName == "nali") {
+    real_db = new nali::nalidb<size_t, uint64_t>();
+    db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, thread_ids);
+  } else if (dbName == "utree") {
+    real_db = new nali::utree_db<size_t, uint64_t>();
+    db = real_db;
+  } else {
+    LOG_INFO("not defined db: %s", dbName.c_str());
+    assert(false);
+  }
+  assert(real_db);
+
   // Tree<KEY_TYPE, VALUE_TYPE> *db = real_db;
 
   #ifdef USE_BULKLOAD
@@ -498,103 +503,103 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // {
-  //   size_t total_mix_ops = 10000000;
-  //   std::vector<float> insert_ratios = {1};
-  //   // std::vector<float> insert_ratios = {0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
-  //   float insert_ratio = 0;
+  {
+    size_t total_mix_ops = 10000000;
+    std::vector<float> insert_ratios = {0.5};
+    // std::vector<float> insert_ratios = {0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
+    float insert_ratio = 0;
 
-  //   LOG_INFO(" @@@@@@@@@@@@@ mixed update/get @@@@@@@@@@@@@@@");
+    LOG_INFO(" @@@@@@@@@@@@@ mixed update/get @@@@@@@@@@@@@@@");
 
-  //   for (int loop = 0; loop < insert_ratios.size(); loop++) {
-  //     // mix update/get
-  //     util::FastRandom ranny(18);
-  //     std::vector<double> random_ratio(total_mix_ops);
-  //     Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
-  //     for (size_t i = 0; i < total_mix_ops; ++i) {
-  //       int idx = get_rnd.Next();
-  //       std::swap(data_base[i], data_base[idx]);
-  //       random_ratio[i] = ranny.ScaleFactor();
-  //     }
+    for (int loop = 0; loop < insert_ratios.size(); loop++) {
+      // mix update/get
+      util::FastRandom ranny(18);
+      std::vector<double> random_ratio(total_mix_ops);
+      Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
+      for (size_t i = 0; i < total_mix_ops; ++i) {
+        int idx = get_rnd.Next();
+        std::swap(data_base[i], data_base[idx]);
+        random_ratio[i] = ranny.ScaleFactor();
+      }
 
-  //     insert_ratio = insert_ratios[loop];
-  //     std::vector<std::thread> threads;
-  //     std::atomic_int thread_idx_count(0);
-  //     size_t per_thread_size = total_mix_ops / total_thread_num;
+      insert_ratio = insert_ratios[loop];
+      std::vector<std::thread> threads;
+      std::atomic_int thread_idx_count(0);
+      size_t per_thread_size = total_mix_ops / total_thread_num;
       
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_start(&nvdimm_counter_begin);
-  //     #endif
+      #ifdef STATISTIC_PMEM_INFO
+      pin_start(&nvdimm_counter_begin);
+      #endif
 
-  //     auto ts = TIME_NOW;
-  //     for (int i = 0; i < thread_id_arr.size(); ++i) {
-  //         threads.emplace_back([&](){
-  //         int idx = thread_idx_count.fetch_add(1); 
-  //         nali::thread_id = thread_id_arr[idx];
-  //         nali::bindCore(nali::thread_id);
-  //         size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
-  //         size_t start_pos = idx * per_thread_size;
+      auto ts = TIME_NOW;
+      for (int i = 0; i < thread_id_arr.size(); ++i) {
+          threads.emplace_back([&](){
+          int idx = thread_idx_count.fetch_add(1); 
+          nali::thread_id = thread_id_arr[idx];
+          nali::bindCore(nali::thread_id);
+          size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
+          size_t start_pos = idx * per_thread_size;
               
-  //         int wrong_get = 0;
-  //         #ifdef VARVALUE
-  //           std::string value(VALUE_LENGTH, '1');
-  //           std::string cmp_value(VALUE_LENGTH, '1');
-  //         #else
-  //           size_t value;
-  //         #endif
-  //         size_t t_v = 0x19990627UL;
-  //         for (int t = 0; t < 1; t++) {
-  //           for (size_t j = 0; j < size; ++j) {
-  //             bool ret;
-  //             if (random_ratio[start_pos+j] < insert_ratio) {
-  //               #ifdef VARVALUE
-  //                 memcpy((char *)value.c_str(), &t_v, 8);
-  //                 ret = db->update(data_base[start_pos+j], value);
-  //               #else
-  //                 ret = db->update(data_base[start_pos+j], t_v);
-  //               #endif
-  //             } else {
-  //               #ifdef VARVALUE
-  //                 memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
-  //                 ret = db->search(data_base[start_pos+j], value);
-  //                 if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
-  //                   wrong_get++;
-  //                 }
-  //               #else
-  //                 ret = db->search(data_base[start_pos+j], value);
-  //                 if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
-  //                   wrong_get++;
-  //                 }
-  //               #endif
-  //             }
+          int wrong_get = 0;
+          #ifdef VARVALUE
+            std::string value(VALUE_LENGTH, '1');
+            std::string cmp_value(VALUE_LENGTH, '1');
+          #else
+            size_t value;
+          #endif
+          size_t t_v = 0x19990627UL;
+          for (int t = 0; t < 1; t++) {
+            for (size_t j = 0; j < size; ++j) {
+              bool ret;
+              if (random_ratio[start_pos+j] < insert_ratio) {
+                #ifdef VARVALUE
+                  memcpy((char *)value.c_str(), &t_v, 8);
+                  ret = db->update(data_base[start_pos+j], value);
+                #else
+                  ret = db->update(data_base[start_pos+j], t_v);
+                #endif
+              } else {
+                #ifdef VARVALUE
+                  memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
+                  ret = db->search(data_base[start_pos+j], value);
+                  if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
+                    wrong_get++;
+                  }
+                #else
+                  ret = db->search(data_base[start_pos+j], value);
+                  if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+                    wrong_get++;
+                  }
+                #endif
+              }
               
-  //             if(idx == 0 && (j + 1) % 100000 == 0) {
-  //               std::cerr << "Operate: " << j + 1 << '\r'; 
-  //             }
-  //           }
-  //         }
-  //         if (wrong_get != 0) {
-  //           std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
-  //         }
-  //       });
-  //     }
+              if(idx == 0 && (j + 1) % 100000 == 0) {
+                std::cerr << "Operate: " << j + 1 << '\r'; 
+              }
+            }
+          }
+          if (wrong_get != 0) {
+            std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+          }
+        });
+      }
 
-  //     for (auto& t : threads)
-  //       t.join();
+      for (auto& t : threads)
+        t.join();
           
-  //     auto te = TIME_NOW;
+      auto te = TIME_NOW;
 
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_end(&nvdimm_counter_end);
-  //     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-  //     #endif
+      #ifdef STATISTIC_PMEM_INFO
+      pin_end(&nvdimm_counter_end);
+      print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+      #endif
       
-  //     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  //     std::cout << "[Mix]: Mix " << total_mix_ops << ": " 
-  //               << "cost " << use_seconds << "s, " 
-  //               << "iops " << (double)(total_mix_ops)/use_seconds << " ." << std::endl;
-  //   }
-  // }
+      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+      std::cout << "[Mix]: Mix " << total_mix_ops << ": " 
+                << "cost " << use_seconds << "s, " 
+                << "iops " << (double)(total_mix_ops)/use_seconds << " ." << std::endl;
+    }
+  }
   
   {
     // Scan

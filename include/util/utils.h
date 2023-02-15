@@ -14,9 +14,7 @@
 
 namespace nali {
 
-#define PMEM 1
-//enable linear probing design
-#define HASH 1
+#define PMEM
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)

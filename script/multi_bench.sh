@@ -12,7 +12,7 @@ function Run() {
     rm -rf /mnt/pmem0/zzy/*
     rm -rf /mnt/pmem1/zzy/*
     Loadname="ycsb-400m"
-    loadnum=400000000
+    loadnum=200000000
     date | tee multi-${dbname}-${Loadname}-th${thread}.txt
     # gdb --args \
     # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
@@ -68,7 +68,7 @@ function Run() {
 loadnum=400000000
 opnum=10000000
 scansize=4000000
-dbname="alexol"
+dbname="utree"
 valuesize=8 # if value size == 8, undef varvalue
 # zipfan=0 # if zipfan = 0, is uniform
 for thread in 16
