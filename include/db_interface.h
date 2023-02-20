@@ -5,6 +5,7 @@
 #include "../src/nali.h"
 #include "../third/alexol/alex.h"
 #include "../third/utree/utree.h"
+#include "../third/pactree/src/pactree_wrapper.h"
 
 #include "tbb/tbb.h"
 #include <utility>
@@ -196,6 +197,53 @@ namespace nali {
 
         private:
             utree::btree *db_;
+    };
+
+    template <class T, class P>
+    class pactree_db : public Tree<T, P> {
+        public:
+            typedef std::pair<T, P> V;
+            pactree_db() {
+                init_numa_map();
+                db_ = new pactree_wrapper();
+            }
+
+            ~pactree_db() {
+                delete db_;
+            }
+
+            void bulk_load(const V values[], int num_keys) {
+                for (int i = 0; i < num_keys; i++) {
+                    db_->insert(values[i].first, values[i].second);
+                }
+            }
+
+            bool insert(const T& key, const P& payload) {
+                return db_->insert(key, payload);
+            }
+
+            bool search(const T& key, P &payload) {
+                return db_->find(key, payload);
+            }
+
+            bool erase(const T& key, uint64_t *log_offset = nullptr) {
+                db_->remove(key);
+                return true;
+            }
+
+            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
+                return db_->remove(key);
+            }
+
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
+                return db_->scan(key, to_scan, result);
+            }
+
+            void get_info() {
+            }
+
+        private:
+            pactree_wrapper *db_;
     };
 }
 

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.12)
 project(nali)
 
+add_subdirectory(third/utree)
+
 set(CMAKE_CXX_STANDARD 17)
 include(FetchContent)
 include(ExternalProject)
@@ -58,19 +60,22 @@ include_directories(benchmark)
 include_directories(include/util)
 include_directories(src)
 include_directories(third)
-list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
+include_directories(third/pactree/include)
+include_directories(third/pactree/src)
 
-add_subdirectory(third/utree)
+list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
 link_libraries(
     ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so
+    # ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libnali_pactree.so
+    ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libpactree.so
 )
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)
 # target_link_libraries(benchmark PRIVATE ${libs_to_link})
 
-add_executable(nali_multi_bench benchmark/multi_bench.cpp)            
+add_executable(nali_multi_bench benchmark/multi_bench.cpp )            
 # add_dependencies(nali_multi_bench PMDK)
 target_link_libraries(nali_multi_bench PRIVATE ${libs_to_link})
 

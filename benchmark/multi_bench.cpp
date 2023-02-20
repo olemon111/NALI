@@ -254,6 +254,9 @@ int main(int argc, char *argv[]) {
   } else if (dbName == "utree") {
     real_db = new nali::utree_db<size_t, uint64_t>();
     db = real_db;
+  } else if (dbName == "pactree") {
+    real_db = new nali::pactree_db<size_t, uint64_t>();
+    db = real_db;
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
