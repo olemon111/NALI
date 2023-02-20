@@ -15,19 +15,22 @@
 #include <vector>
 #include <thread>
 #include <gperftools/profiler.h>
-
-#include "nali_alloc.h"
-
-#ifdef PMEM
-#define USE_PMDK
 #include <libpmemobj.h>
-#endif
-
-#define PAGESIZE 512
-#define CACHE_LINE_SIZE 64 
-#define IS_FORWARD(c) (c % 2 == 0)
 
 // #define BREAKDOWN
+#define USE_PMDK
+
+#define IS_FORWARD(c) (c % 2 == 0)
+
+extern int8_t global_numa_map[64];
+extern thread_local size_t global_thread_id;
+
+using namespace std;
+
+namespace utree {
+
+const int UTREE_PAGESIZE = 512;
+const int UTREE_CACHE_LINE_SIZE = 64;
 uint64_t LEAF_ALLOC = 0;
 uint64_t TRAVERSAL = 0;
 uint64_t LEAF_INSERT = 0;
@@ -46,10 +49,6 @@ pthread_mutex_t print_mtx;
 // extern __thread char *start_addr;
 // extern __thread char *curr_addr;
 
-extern thread_local size_t nali::thread_id;
-
-using namespace std;
-
 #ifdef PMEM
 inline void mfence()
 {
@@ -58,9 +57,9 @@ inline void mfence()
 
 inline void clflush(char *data, int len)
 {
-  volatile char *ptr = (char *)((unsigned long)data &~(CACHE_LINE_SIZE-1));
+  volatile char *ptr = (char *)((unsigned long)data &~(UTREE_CACHE_LINE_SIZE-1));
   mfence();
-  for(; ptr<data+len; ptr+=CACHE_LINE_SIZE){
+  for(; ptr<data+len; ptr+=UTREE_CACHE_LINE_SIZE){
     asm volatile(".byte 0x66; clflush %0" : "+m" (*(volatile char *)ptr));
   }
   mfence();
@@ -92,32 +91,31 @@ POBJ_LAYOUT_TOID(btree, list_node_t);
 POBJ_LAYOUT_END(btree);
 extern PMEMobjpool **pop;
 #endif
-// void *alloc(size_t size) {
-// #ifdef USE_PMDK
-//   // TOID(list_node_t) p;
-//   // POBJ_ZALLOC(pop, &p, list_node_t, size);
-//   // return pmemobj_direct(p.oid);
 
-//   // PMEMoid p;
-//   // pmemobj_zalloc(pop, &p, sizeof(list_node_t), TOID_TYPE_NUM(list_node_t));
-//   // return pmemobj_direct(p);
+static inline int8_t get_numa_id(size_t thread_id) {
+  return global_numa_map[thread_id];
+}
 
-//   PMEMoid p;
-//   pmemobj_alloc(pop, &p, sizeof(list_node_t), 0, NULL, NULL);
-//   return pmemobj_direct(p);
-// #else
-//   // void *ret = curr_addr;
-//   // memset(ret, 0, sizeof(list_node_t));
-//   // curr_addr += size;
-//   // if (curr_addr >= start_addr + SPACE_PER_THREAD) {
-//   //   printf("start_addr is %p, curr_addr is %p, SPACE_PER_THREAD is %lu, no "
-//   //          "free space to alloc\n",
-//   //          start_addr, curr_addr, SPACE_PER_THREAD);
-//   //   exit(0);
-//   // }
-//   // return ret;
-// #endif
-// }
+static inline PMEMobjpool** init_numa_pool() {
+  const int numa_node_num = 2;
+  PMEMobjpool** pop = new PMEMobjpool*[2];
+  constexpr size_t pool_size_ = ((size_t)(1024 * 1024 * 64) * 1024);
+  const std::string pool_path_ = "/mnt/pmem";
+  for (int i = 0; i < numa_node_num; i++) {
+    std::string path_ = pool_path_ + std::to_string(i) + "/zzy/nali_data";
+    if ((pop[i] = pmemobj_create(path_.c_str(), POBJ_LAYOUT_NAME(i), pool_size_, 0666)) == NULL) {
+      perror("failed to create pool.\n");
+      exit(-1);
+    }
+  }
+  return pop;
+}
+
+static inline void *alloc(PMEMobjpool** pop, size_t size) {
+  PMEMoid p;
+  pmemobj_alloc(pop[get_numa_id(global_thread_id)], &p, size, 0, NULL, NULL);
+  return pmemobj_direct(p);
+}
 
 class page;
 
@@ -209,8 +207,8 @@ class entry{
     friend class btree;
 };
 
-const int cardinality = (PAGESIZE-sizeof(header))/sizeof(entry);
-const int count_in_line = CACHE_LINE_SIZE / sizeof(entry);
+const int cardinality = (UTREE_PAGESIZE-sizeof(header))/sizeof(entry);
+const int count_in_line = UTREE_CACHE_LINE_SIZE / sizeof(entry);
 
 class page{
   private:
@@ -1041,9 +1039,8 @@ class page{
 btree::btree(){
   root = (char*)new page();
 #ifdef USE_PMDK
-  // openPmemobjPool();
-  pop = nali::init_numa_pool();
-  list_head = (list_node_t *)nali::alloc(pop, sizeof(list_node_t));
+  pop = init_numa_pool();
+  list_head = (list_node_t *)alloc(pop, sizeof(list_node_t));
 #else
   // printf("without pmdk!\n");
   list_head = new list_node_t();
@@ -1281,7 +1278,7 @@ void btree::insert(entry_key_t key, char *right) {
   auto start = rdtsc();
 #endif
   #ifdef PMEM
-  list_node_t *n = (list_node_t *)nali::alloc(pop, sizeof(list_node_t));
+  list_node_t *n = (list_node_t *)alloc(pop, sizeof(list_node_t));
   #else
   list_node_t *n = new list_node_t();
   #endif
@@ -1466,4 +1463,6 @@ void btree::printAll(){
 
   // printf("total number of keys: %d\n", total_keys);
   // pthread_mutex_unlock(&print_mtx);
+}
+
 }

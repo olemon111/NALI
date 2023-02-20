@@ -16,9 +16,9 @@
 // #define SCAN_USE_THREAD_POOL
 #define PER_THREAD_POOL_THREADS 8
 
-namespace nali {
+extern thread_local size_t global_thread_id;
 
-extern thread_local size_t thread_id;
+namespace nali {
 
 struct logdb_statistic {
     #ifdef USE_PROXY
@@ -146,7 +146,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 
                 #ifdef USE_PROXY
                     int8_t numa_id = log_info.numa_id_;
-                    if (numa_id == get_numa_id(nali::thread_id)) {
+                    if (numa_id == get_numa_id(global_thread_id)) {
                         payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
                     } else {
                         // send read req to remote numa
@@ -298,7 +298,7 @@ extern thread_local size_t random_thread_id[numa_max_node];
             void check_read_queue(int loop_times = 3) {
                 // check read_req queue
                 read_req<P> *req_ = nullptr;
-                while (loop_times-- && readreq_queue_[nali::thread_id].try_dequeue(req_)) {
+                while (loop_times-- && readreq_queue_[global_thread_id].try_dequeue(req_)) {
                     int cnt_before = 2;
                     int cnt_after = 1;
                     bool res = req_->user_cnt.compare_exchange_strong(cnt_before, cnt_after, std::memory_order_acquire);

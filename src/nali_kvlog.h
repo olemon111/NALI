@@ -9,13 +9,14 @@
 #include "nali_alloc.h"
 #include "xxhash.h"
 #include "rwlock.h"
+
+extern thread_local size_t global_thread_id;
+
 namespace nali {
 
 // #define USE_PROXY
 
 // #define VARVALUE
-
-extern thread_local size_t thread_id;
 
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
 using OP_VERSION = uint64_t;
@@ -309,7 +310,7 @@ public:
     }
 
     char *alloc_log(uint64_t hash_key, last_log_offest &log_info, size_t alloc_size) {
-      return ppage_[get_numa_id(thread_id)][hash_key % NALI_VERSION_SHARDS]->alloc(log_info, alloc_size);
+      return ppage_[get_numa_id(global_thread_id)][hash_key % NALI_VERSION_SHARDS]->alloc(log_info, alloc_size);
     }
 
     char *get_addr(const last_log_offest &log_info, uint64_t hash_key) {
@@ -372,10 +373,10 @@ public:
       int perthread_hash_nums = NALI_VERSION_SHARDS / recovery_thread_num;
       for (int thread_cnt = 0; thread_cnt < recovery_thread_num; thread_cnt++) {
         int idx = thread_idx_count.fetch_add(1);
-        nali::thread_id = idx;
+        global_thread_id = idx;
         recovery_threads.emplace_back([&](){
-          int begin_hashid = nali::thread_id * perthread_hash_nums;
-          int end_hashid = (nali::thread_id == recovery_thread_num-1) ? NALI_VERSION_SHARDS : (begin_hashid + perthread_hash_nums);
+          int begin_hashid = global_thread_id * perthread_hash_nums;
+          int end_hashid = (global_thread_id == recovery_thread_num-1) ? NALI_VERSION_SHARDS : (begin_hashid + perthread_hash_nums);
           for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
             for (int hash_id = begin_hashid; hash_id < end_hashid; hash_id++) {
               for (int ppage_id = ppage_[numa_id][hash_id]->header_.ppage_id; ppage_id >= 0; ppage_id--) {

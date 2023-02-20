@@ -20,7 +20,35 @@
 #include "util/sosd_util.h"
 
 // #define STATISTIC_PMEM_INFO 
-// #define USE_BULKLOAD
+#define USE_BULKLOAD
+
+#ifdef STASTISTIC_NALI_CDF
+size_t nali::test_total_keys = 0;
+#endif
+
+using KEY_TYPE = size_t;
+
+#ifdef VARVALUE
+using VALUE_TYPE = std::string;
+constexpr size_t VALUE_LENGTH = 128;
+#else
+using VALUE_TYPE = size_t;
+#endif
+
+int8_t global_numa_map[64];
+thread_local size_t global_thread_id = -1;
+
+std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
+
+int numa0_thread_num = 16;
+int numa1_thread_num = 16;
+size_t BULKLOAD_SIZE = 0;
+size_t LOAD_SIZE   = 100000000;
+size_t PUT_SIZE    = 10000000;
+size_t GET_SIZE    = 100000000;
+size_t DELETE_SIZE = 10000000;
+int Loads_type = 3;
+size_t valuesize = 8;
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"
@@ -91,28 +119,11 @@ size_t physical_memory_used_by_process()
     return result;
 }
 
-int parallel_merge_worker_num = 16; // param for dptree
-PMEMobjpool **pop = nullptr;
-
-namespace nali {
-
-thread_local size_t thread_id = -1;
-int8_t numa_map[max_thread_num];
-
-#ifdef STASTISTIC_NALI_CDF
-size_t test_total_keys = 0;
-#endif
-
+template<typename T>
+std::vector<T>load_data_from_osm(const std::string dataname)
+{
+  return util::load_data<T>(dataname);
 }
-
-using KEY_TYPE = size_t;
-
-#ifdef VARVALUE
-using VALUE_TYPE = std::string;
-constexpr size_t VALUE_LENGTH = 128;
-#else
-using VALUE_TYPE = size_t;
-#endif
 
 void show_help(char* prog) {
   std::cout <<
@@ -125,24 +136,6 @@ void show_help(char* prog) {
     "    --get-size               GET_SIZE" << std::endl <<
     "    --workload               WorkLoad" << std::endl <<
     "    --help[-h]               show help" << std::endl;
-}
-
-std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
-
-int numa0_thread_num = 16;
-int numa1_thread_num = 16;
-size_t BULKLOAD_SIZE = 0;
-size_t LOAD_SIZE   = 100000000;
-size_t PUT_SIZE    = 10000000;
-size_t GET_SIZE    = 100000000;
-size_t DELETE_SIZE = 10000000;
-int Loads_type = 3;
-size_t valuesize = 8;
-
-template<typename T>
-std::vector<T>load_data_from_osm(const std::string dataname)
-{
-  return util::load_data<T>(dataname);
 }
 
 int main(int argc, char *argv[]) {
@@ -289,8 +282,8 @@ int main(int argc, char *argv[]) {
     }
 
     LOG_INFO("@@@@ BULK LOAD START @@@@");
-    nali::thread_id = 0; // thread0 do bulkload
-    nali::bindCore(nali::thread_id);
+    global_thread_id = 0; // thread0 do bulkload
+    nali::bindCore(global_thread_id);
     db->bulk_load(values, BULKLOAD_SIZE);
     LOG_INFO("@@@@ BULK LOAD END @@@@");
     #ifdef STATISTIC_PMEM_INFO
@@ -320,8 +313,8 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < thread_id_arr.size(); i++) {
       threads.emplace_back([&](){
         int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_id_arr[idx];
-        nali::bindCore(nali::thread_id);
+        global_thread_id = thread_id_arr[idx];
+        nali::bindCore(global_thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (LOAD_SIZE-idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size + BULKLOAD_SIZE;
         #ifdef VARVALUE
@@ -387,8 +380,8 @@ int main(int argc, char *argv[]) {
     for(int i = 0; i < thread_id_arr.size(); i++) {
       threads.emplace_back([&](){
         int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_id_arr[idx];
-        nali::bindCore(nali::thread_id);
+        global_thread_id = thread_id_arr[idx];
+        nali::bindCore(global_thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size + LOAD_SIZE + BULKLOAD_SIZE;
         #ifdef VARVALUE
@@ -451,8 +444,8 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < thread_id_arr.size(); ++i) {
           threads.emplace_back([&](){
           int idx = thread_idx_count.fetch_add(1); 
-          nali::thread_id = thread_id_arr[idx];
-          nali::bindCore(nali::thread_id);
+          global_thread_id = thread_id_arr[idx];
+          nali::bindCore(global_thread_id);
           size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
@@ -484,7 +477,7 @@ int main(int argc, char *argv[]) {
             }
           }
           if (wrong_get != 0) {
-            std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+            std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
           }
         });
       }
@@ -538,8 +531,8 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < thread_id_arr.size(); ++i) {
           threads.emplace_back([&](){
           int idx = thread_idx_count.fetch_add(1); 
-          nali::thread_id = thread_id_arr[idx];
-          nali::bindCore(nali::thread_id);
+          global_thread_id = thread_id_arr[idx];
+          nali::bindCore(global_thread_id);
           size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
@@ -582,7 +575,7 @@ int main(int argc, char *argv[]) {
             }
           }
           if (wrong_get != 0) {
-            std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+            std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
           }
         });
       }
@@ -630,8 +623,8 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < thread_id_arr.size(); ++i) {
           threads.emplace_back([&](){
           int idx = thread_idx_count.fetch_add(1); 
-          nali::thread_id = thread_id_arr[idx];
-          nali::bindCore(nali::thread_id);
+          global_thread_id = thread_id_arr[idx];
+          nali::bindCore(global_thread_id);
           size_t size = (idx == thread_id_arr.size()-1) ? (total_scan_ops-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
           #ifdef VARVALUE
@@ -664,7 +657,7 @@ int main(int argc, char *argv[]) {
             }
           }
           if (wrong_get != 0) {
-            std::cout << "thread " << nali::thread_id << ", total scan kvs: " << total_get << ", wrong get: " << wrong_get << std::endl;
+            std::cout << "thread " << global_thread_id << ", total scan kvs: " << total_get << ", wrong get: " << wrong_get << std::endl;
           }
           delete [] results;
         });
@@ -709,8 +702,8 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < thread_id_arr.size(); ++i) {
         threads.emplace_back([&](){
         int idx = thread_idx_count.fetch_add(1); 
-        nali::thread_id = thread_id_arr[idx];
-        nali::bindCore(nali::thread_id);
+        global_thread_id = thread_id_arr[idx];
+        nali::bindCore(global_thread_id);
         size_t size = (idx == thread_id_arr.size()-1) ? (DELETE_SIZE-idx*per_thread_size) : per_thread_size;
         size_t start_pos = idx * per_thread_size;
             
@@ -731,7 +724,7 @@ int main(int argc, char *argv[]) {
           }
         }
         if (wrong_get != 0) {
-          std::cout << "thread " << nali::thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+          std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
         }
       });
     }

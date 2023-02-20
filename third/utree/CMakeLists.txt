@@ -8,9 +8,9 @@ set(CMAKE_BUILD_TYPE Release)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -std=c++17 -lpmem -lpmemobj -ljemalloc -mrtm -pthread")
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_definitions(-DNDEBUG)
 message(STATUS "NDEBUG: defined")
@@ -27,6 +27,6 @@ if (NOT pibench_POPULATED)
 endif ()
 
 
-add_library(utree_pibench_wrapper SHARED utree_wrapper.cpp
+add_library(nali_utree SHARED utree.cc
 						utree.h)
 

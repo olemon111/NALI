@@ -18,7 +18,6 @@ add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)
 
-# add_subdirectory(third/DPTree)
 # message(STATUS "Persistence support: PMDK")
 
 # ##################### PMDK ####################
@@ -61,9 +60,11 @@ include_directories(src)
 include_directories(third)
 list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
-# link_libraries(
-#     ${PROJECT_SOURCE_DIR}/third/DPTree/build/libdptree.a
-# )
+add_subdirectory(third/utree)
+
+link_libraries(
+    ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so
+)
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)

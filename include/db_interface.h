@@ -135,7 +135,7 @@ namespace nali {
             typedef std::pair<T, P> V;
             utree_db() {
                 init_numa_map();
-                db_ = new btree();
+                db_ = new utree::btree();
             }
 
             ~utree_db() {
@@ -195,7 +195,7 @@ namespace nali {
             }
 
         private:
-            btree *db_;
+            utree::btree *db_;
     };
 }
 
