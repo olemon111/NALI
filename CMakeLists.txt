@@ -61,9 +61,9 @@ include_directories(src)
 include_directories(third)
 list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
-link_libraries(
-    ${PROJECT_SOURCE_DIR}/third/DPTree/build/libdptree.a
-)
+# link_libraries(
+#     ${PROJECT_SOURCE_DIR}/third/DPTree/build/libdptree.a
+# )
 
 # add_executable(benchmark benchmark/main.cpp)            
 # add_dependencies(benchmark PMDK)

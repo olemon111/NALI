@@ -61,7 +61,7 @@ static inline int8_t get_numa_id(size_t thread_id) {
 // modify from utree source code
 static inline PMEMobjpool** init_numa_pool() {
     PMEMobjpool** pop = new PMEMobjpool*[2];
-    constexpr size_t pool_size_ = ((size_t)(1024 * 1024 * 128) * 1024);
+    constexpr size_t pool_size_ = ((size_t)(1024 * 1024 * 64) * 1024);
     const std::string pool_path_ = "/mnt/pmem";
     for (int i = 0; i < numa_node_num; i++) {
         std::string path_ = pool_path_ + std::to_string(i) + "/zzy/nali_data";

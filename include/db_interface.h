@@ -5,7 +5,6 @@
 #include "../src/nali.h"
 #include "../third/alexol/alex.h"
 #include "../third/utree/utree.h"
-#include "../third/DPTree/include/concur_dptree.hpp"
 
 #include "tbb/tbb.h"
 #include <utility>
@@ -197,64 +196,6 @@ namespace nali {
 
         private:
             btree *db_;
-    };
-
-    template <class T, class P>
-    class dptree_db : public Tree<T, P> {
-        public:
-            typedef std::pair<T, P> V;
-            dptree_db() {
-                init_numa_map();
-                db_ = new dptree::concur_dptree<T, P>();
-            }
-
-            ~dptree_db() {
-                delete db_;
-            }
-
-            void bulk_load(const V values[], int num_keys) {
-                for (int i = 0; i < num_keys; i++) {
-                    db_->insert(values[i].first, values[i].second);
-                }
-            }
-
-            bool insert(const T& key, const P& payload) {
-                db_->insert(key, payload);
-                return true;
-            }
-
-            bool search(const T& key, P &payload) {
-                db_->lookup(key, payload);
-                payload >>= 1;
-                return true;
-            }
-
-            bool erase(const T& key, uint64_t *log_offset = nullptr) {
-                // current dptree code does not implement delete
-                return true;
-            }
-
-            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                db_->upsert(key, payload);
-                return true;
-            }
-
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                static thread_local std::vector<uint64_t> v(to_scan*2);
-                v.clear();
-                db_->scan(key, to_scan, v);
-                for (int i = 0; i < v.size(); i+=2) {
-                    result[i].first = v[i];
-                    result[i].second = v[i+1];
-                }
-                return v.size() / 2;
-            }
-
-            void get_info() {
-            }
-
-        private:
-            dptree::concur_dptree<T, P> *db_;
     };
 }
 
