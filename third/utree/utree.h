@@ -20,7 +20,7 @@
 // #define BREAKDOWN
 #define USE_PMDK
 
-#define IS_FORWARD(c) (c % 2 == 0)
+#define UTREE_IS_FORWARD(c) (c % 2 == 0)
 
 extern int8_t global_numa_map[64];
 extern thread_local size_t global_thread_id;
@@ -248,7 +248,7 @@ class page{
         count = hdr.last_index + 1;
 
         while(count >= 0 && records[count].ptr != NULL) {
-          if(IS_FORWARD(previous_switch_counter))
+          if(UTREE_IS_FORWARD(previous_switch_counter))
             ++count;
           else
             --count;
@@ -268,7 +268,7 @@ class page{
 
     inline bool remove_key(entry_key_t key) {
       // Set the switch_counter
-      if(!IS_FORWARD(hdr.switch_counter)) 
+      if(!UTREE_IS_FORWARD(hdr.switch_counter)) 
         ++hdr.switch_counter;
 
       bool shift = false;
@@ -306,7 +306,7 @@ class page{
     inline void insert_key(entry_key_t key, char* ptr, int *num_entries, bool flush = true,
         bool update_last_index = true) {
           // update switch_counter
-          if(!IS_FORWARD(hdr.switch_counter))
+          if(!UTREE_IS_FORWARD(hdr.switch_counter))
             ++hdr.switch_counter;
 
           // FAST
@@ -426,7 +426,7 @@ class page{
           hdr.sibling_ptr = sibling;
 
           // set to NULL
-          if(IS_FORWARD(hdr.switch_counter))
+          if(UTREE_IS_FORWARD(hdr.switch_counter))
             hdr.switch_counter += 2;
           else
             ++hdr.switch_counter;
@@ -472,7 +472,7 @@ class page{
     inline void insert_key(entry_key_t key, char* ptr, int *num_entries, char **pred, bool flush = true,
           bool update_last_index = true) {
         // update switch_counter
-        if(!IS_FORWARD(hdr.switch_counter))
+        if(!UTREE_IS_FORWARD(hdr.switch_counter))
           ++hdr.switch_counter;
 
         // FAST
@@ -600,7 +600,7 @@ class page{
           hdr.sibling_ptr = sibling;
 
           // set to NULL
-          if(IS_FORWARD(hdr.switch_counter))
+          if(UTREE_IS_FORWARD(hdr.switch_counter))
             hdr.switch_counter += 2;
           else
             ++hdr.switch_counter;
@@ -656,7 +656,7 @@ class page{
           ret = NULL;
 
           // search from left ro right
-          if(IS_FORWARD(previous_switch_counter)) { 
+          if(UTREE_IS_FORWARD(previous_switch_counter)) { 
             if((k = records[0].key) == key) { 
               if((t = records[0].ptr) != NULL) {
                 if(k == records[0].key) {
@@ -716,7 +716,7 @@ class page{
           previous_switch_counter = hdr.switch_counter;
           ret = NULL;
 
-          if(IS_FORWARD(previous_switch_counter)) {
+          if(UTREE_IS_FORWARD(previous_switch_counter)) {
             if(key < (k = records[0].key)) {
               if((t = (char *)hdr.leftmost_ptr) != records[0].ptr) { 
                 ret = t;
@@ -786,7 +786,7 @@ class page{
           ret = NULL;
 
           // search from left to right
-          if(IS_FORWARD(previous_switch_counter)) {
+          if(UTREE_IS_FORWARD(previous_switch_counter)) {
             if (debug) {
               printf("search from left to right\n");
               printf("page:\n");
@@ -910,7 +910,7 @@ class page{
           previous_switch_counter = hdr.switch_counter;
           ret = NULL;
 
-          if(IS_FORWARD(previous_switch_counter)) {
+          if(UTREE_IS_FORWARD(previous_switch_counter)) {
             if(key < (k = records[0].key)) {
               if((t = (char *)hdr.leftmost_ptr) != records[0].ptr) { 
                 ret = t;
@@ -975,7 +975,7 @@ class page{
       // printf("last_index: %d\n", hdr.last_index);
       // printf("switch_counter: %d\n", hdr.switch_counter);
       // printf("search direction: ");
-      // if(IS_FORWARD(hdr.switch_counter))
+      // if(UTREE_IS_FORWARD(hdr.switch_counter))
       //   printf("->\n");
       // else
       //   printf("<-\n");
@@ -1123,7 +1123,7 @@ retry:  // try to find target record and set deleted
     previous_switch_counter = p->hdr.switch_counter;
     node = NULL;
     prev = NULL;
-    if(IS_FORWARD(previous_switch_counter)) { // search from left to right
+    if(UTREE_IS_FORWARD(previous_switch_counter)) { // search from left to right
       p->hdr.mtx->lock();
       for (i = 0; i <= p->hdr.last_index; i++) {
         k = p->records[i].key;
