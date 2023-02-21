@@ -6,7 +6,7 @@
 #include "../third/alexol/alex.h"
 #include "../third/utree/utree.h"
 #include "../third/pactree/src/pactree_wrapper.h"
-
+#include "../third/lbtree/lbtree-src/lbtree_wrapper.hpp"
 #include "tbb/tbb.h"
 #include <utility>
 
@@ -232,7 +232,7 @@ namespace nali {
             }
 
             bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                return db_->remove(key);
+                return db_->update(key, payload);
             }
 
             int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
@@ -244,6 +244,52 @@ namespace nali {
 
         private:
             pactree_wrapper *db_;
+    };
+
+    template <class T, class P>
+    class lbtree_db : public Tree<T, P> {
+        public:
+            typedef std::pair<T, P> V;
+            lbtree_db(int total_thrad_num) {
+                init_numa_map();
+                db_ = create_lbtree(total_thrad_num);
+            }
+
+            ~lbtree_db() {
+                delete db_;
+            }
+
+            void bulk_load(const V values[], int num_keys) {
+                for (int i = 0; i < num_keys; i++) {
+                    db_->insert(values[i].first, values[i].second);
+                }
+            }
+
+            bool insert(const T& key, const P& payload) {
+                return db_->insert(key, payload);
+            }
+
+            bool search(const T& key, P &payload) {
+                return db_->find(key, payload);
+            }
+
+            bool erase(const T& key, uint64_t *log_offset = nullptr) {
+                return db_->remove(key);
+            }
+
+            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
+                return db_->update(key, payload);
+            }
+
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
+                return db_->scan(key, to_scan, result);
+            }
+
+            void get_info() {
+            }
+
+        private:
+            lbtree_wrapper *db_;
     };
 }
 

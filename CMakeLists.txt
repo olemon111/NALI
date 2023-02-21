@@ -62,6 +62,9 @@ include_directories(src)
 include_directories(third)
 include_directories(third/pactree/include)
 include_directories(third/pactree/src)
+include_directories(third/pactree/src)
+include_directories(third/lbtree/common)
+include_directories(third/lbtree/lbtree-src)
 
 list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
@@ -69,6 +72,7 @@ link_libraries(
     ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so
     # ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libnali_pactree.so
     ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libpactree.so
+    ${PROJECT_SOURCE_DIR}/third/lbtree/libnali_lbtree.so
 )
 
 # add_executable(benchmark benchmark/main.cpp)            

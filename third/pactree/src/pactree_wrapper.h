@@ -35,14 +35,14 @@ private:
 };
 //static std::atomic<uint64_t> i_(0);
 thread_local bool pactree_wrapper::thread_init = false;
-struct ThreadHelper
+struct PactreeThreadHelper
 {
-    ThreadHelper(pactree* t){
+    PactreeThreadHelper(pactree* t){
         t->registerThread();
 	// int id = omp_get_thread_num();
         // printf("Thread ID: %d\n", id);
     }
-    ~ThreadHelper(){}
+    ~PactreeThreadHelper(){}
     
 };
 
@@ -65,28 +65,28 @@ pactree_wrapper::~pactree_wrapper()
 }
 
 bool pactree_wrapper::find(Key_t key, Val_t &value) {
-    thread_local ThreadHelper t(tree_);
+    thread_local PactreeThreadHelper t(tree_);
     value = tree_->lookup(key);
     return true;
 }
 
 bool pactree_wrapper::insert(Key_t key, const Val_t &value) {
-    thread_local ThreadHelper t(tree_);
+    thread_local PactreeThreadHelper t(tree_);
     return tree_->insert(key, value);
 }
 
 bool pactree_wrapper::update(Key_t key, const Val_t &value) {
-    thread_local ThreadHelper t(tree_);
+    thread_local PactreeThreadHelper t(tree_);
     return tree_->update(key, value);
 }
 
 bool pactree_wrapper::remove(Key_t key) {
-    thread_local ThreadHelper t(tree_);
+    thread_local PactreeThreadHelper t(tree_);
     return tree_->remove(key);
 }
 
 int pactree_wrapper::scan(Key_t key, uint32_t to_scan, std::pair<Key_t, Val_t>*& values_out) {
-    thread_local ThreadHelper t(tree_);
+    thread_local PactreeThreadHelper t(tree_);
     thread_local std::vector<Val_t> results;
     results.reserve(to_scan);
     int scanned = tree_->scan(key, to_scan, results);

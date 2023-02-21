@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
   // }
 
   // numa0_thread_num = 0;
-  // numa1_thread_num = 0;
+  numa1_thread_num = 0;
   // LOAD_SIZE = 10000000;
   // PUT_SIZE = 10000000;
   // GET_SIZE = 10000000;
@@ -257,6 +257,9 @@ int main(int argc, char *argv[]) {
   } else if (dbName == "pactree") {
     real_db = new nali::pactree_db<size_t, uint64_t>();
     db = real_db;
+  } else if (dbName == "lbtree") {
+    real_db = new nali::lbtree_db<size_t, uint64_t>(total_thread_num);
+    db = real_db;
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
@@ -279,7 +282,8 @@ int main(int argc, char *argv[]) {
       values[i].first = data_base[i+start_idx];
       values[i].second = data_base[i+start_idx];
     }
-    if (dbName != "nali") {
+
+    if (dbName == "alexol") {
       std::sort(values, values + BULKLOAD_SIZE,
         [](auto const& a, auto const& b) { return a.first < b.first; });
     }
