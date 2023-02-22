@@ -2087,8 +2087,8 @@ void btree::btree_search_range(uint64_t min, uint64_t max, unsigned long *buf,
 void btree::btree_search_range(char *min, char *max, unsigned long *buf,
                                int num, int &off) {
   page *p = (page *)root;
-  key_item *min_item = make_key_item(min, strlen(min) + 1, false);
-  key_item *max_item = make_key_item(max, strlen(max) + 1, false);
+  key_item *min_item = make_key_item(min, 8 + 1, false);
+  key_item *max_item = make_key_item(max, 8 + 1, false);
 
   while (p) {
     if (p->hdr.leftmost_ptr != NULL) {

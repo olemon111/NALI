@@ -5,7 +5,7 @@
 #include <string>
 
 #define FIX_8_BYTE_VALUE
-// #define SUPPORT_RANGE
+#define SUPPORT_RANGE
 
 namespace nap {
 
@@ -21,7 +21,7 @@ constexpr int kCachelineSize = 64;
 constexpr int kMaxNumaCnt = 8;
 constexpr int kMaxThreadCnt = 64;
 
-constexpr int kHotKeys = 100000; // TODO?
+constexpr int kHotKeys = 100000; // TODO?默认100000
 
 class CowAlloctor;
 extern CowAlloctor *cow_alloc;

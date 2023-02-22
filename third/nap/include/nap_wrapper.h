@@ -30,6 +30,7 @@
 
 thread_local uint64_t cur_value = 1;
 thread_local uint8_t thread_local_buffer[4096];
+extern char nap_max_str[15];
 
 struct FastFairTreeIndex {
   fastfair::btree *map;
@@ -105,6 +106,7 @@ nap_fastfair_wrapper::~nap_fastfair_wrapper() {
 bool nap_fastfair_wrapper::find(size_t key, size_t &value) {
   std::string str;
   tree_->get(nap::Slice((char *)(&key), KEY_LEN), str);
+  memcpy(&value, str.c_str(), 8);
   return true;
 }
 
@@ -124,14 +126,9 @@ bool nap_fastfair_wrapper::remove(size_t key) {
 }
 
 int nap_fastfair_wrapper::scan(size_t key, uint32_t to_scan, std::pair<size_t, size_t>*& values_out) {
-  // thread_local static char buf_2[4096];
-  // fastfair_nap.internal_query(
-  //     (nap::Slice((char *)op.key, KEY_LEN)), 10, (char *)buf_2);
-
-  // int off = 0;
-  // tree->btree_search_range((char *)op.key, max_str,
-  //                           (unsigned long *)thread_local_buffer,
-  //                                        10, off);
-  // TODO
+  thread_local static char scan_buf[4096];
+  tree_->internal_query((nap::Slice((char *)(&key), KEY_LEN)), to_scan, scan_buf);
+  int off = 0;
+  ff->btree_search_range(key, UINT64_MAX, (unsigned long *)thread_local_buffer, to_scan, off);
   return 0;
 }
