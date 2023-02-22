@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
   // }
 
   // numa0_thread_num = 0;
-  numa1_thread_num = 0;
+  // numa1_thread_num = 0;
   // LOAD_SIZE = 10000000;
   // PUT_SIZE = 10000000;
   // GET_SIZE = 10000000;
@@ -255,10 +255,13 @@ int main(int argc, char *argv[]) {
     real_db = new nali::utree_db<size_t, uint64_t>();
     db = real_db;
   } else if (dbName == "pactree") {
-    real_db = new nali::pactree_db<size_t, uint64_t>();
+    real_db = new nali::pactree_db<size_t, uint64_t>(numa1_thread_num == 0 ? 1 : 2);
     db = real_db;
   } else if (dbName == "lbtree") {
     real_db = new nali::lbtree_db<size_t, uint64_t>(total_thread_num);
+    db = real_db;
+  } else if (dbName == "nap") {
+    real_db = new nali::napfastfair_db<size_t, uint64_t>();
     db = real_db;
   } else {
     LOG_INFO("not defined db: %s", dbName.c_str());

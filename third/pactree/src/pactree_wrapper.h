@@ -21,7 +21,7 @@ std::atomic<uint64_t> pmem_freed(0);
 class pactree_wrapper
 {
 public:
-    pactree_wrapper();
+    pactree_wrapper(int numa_num);
     virtual ~pactree_wrapper();
 
     virtual bool find(Key_t key, Val_t &value);
@@ -46,9 +46,9 @@ struct PactreeThreadHelper
     
 };
 
-pactree_wrapper::pactree_wrapper()
+pactree_wrapper::pactree_wrapper(int numa_num)
 {
-    tree_ = new pactree(1);
+    tree_ = new pactree(numa_num);
 }
 
 pactree_wrapper::~pactree_wrapper()
