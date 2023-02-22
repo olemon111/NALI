@@ -27,7 +27,7 @@ extern int numa_map[nap::kMaxThreadCnt];
 extern thread_local size_t global_thread_id;
 
 void bindCore(uint16_t core);
-void init_numa_pool();
+void init_nap_numa_pool();
 
 void *index_pmem_alloc(size_t size);
 void index_pmem_free(void *ptr);

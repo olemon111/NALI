@@ -6,9 +6,7 @@
 
 #include <assert.h>
 #include <iostream>
-#include <libpmemobj.h>
 #include "Epoche.h"
-
 using namespace ART;
 
 
@@ -51,9 +49,6 @@ inline void DeletionList::add(void *n, uint64_t globalEpoch) {
             freeLabelDeletes = freeLabelDeletes->next;
         } else {
             label = new LabelDelete();
-        #ifdef MEMORY_FOOTPRINT
-            dram_allocated += sizeof(LabelDelete);
-        #endif
         }
         label->nodesCount = 0;
         label->next = headDeletionList;
@@ -106,10 +101,7 @@ inline void Epoche::exitEpocheAndCleanup(ThreadInfo &epocheInfo) {
 
             if (cur->epoche < oldestEpoche) {
                 for (std::size_t i = 0; i < cur->nodesCount; ++i) {
-                    //operator delete(cur->nodes[i]); 
-		    //PMem::freeVaddr(cur->nodes[i]); 
-	            PMEMoid ptr = pmemobj_oid(cur->nodes[i]);
-                    pmemobj_free(&ptr);
+                    operator delete(cur->nodes[i]);
                 }
                 deletionList.remove(cur, prev);
             } else {
@@ -136,10 +128,7 @@ inline Epoche::~Epoche() {
 
             assert(cur->epoche < oldestEpoche);
             for (std::size_t i = 0; i < cur->nodesCount; ++i) {
-                 //operator delete(cur->nodes[i]); 
-		//PMem::freeVaddr(cur->nodes[i]); 
-	        PMEMoid ptr = pmemobj_oid(cur->nodes[i]);
-           	pmemobj_free(&ptr);
+                operator delete(cur->nodes[i]);
             }
             d.remove(cur, prev);
             cur = next;

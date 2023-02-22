@@ -254,11 +254,16 @@ int main(int argc, char *argv[]) {
   } else if (dbName == "utree") {
     real_db = new nali::utree_db<size_t, uint64_t>();
     db = real_db;
-  } else if (dbName == "pactree") {
-    real_db = new nali::pactree_db<size_t, uint64_t>(numa1_thread_num == 0 ? 1 : 2);
-    db = real_db;
-  } else if (dbName == "lbtree") {
+  } 
+  // else if (dbName == "pactree") {
+  //   real_db = new nali::pactree_db<size_t, uint64_t>(numa1_thread_num == 0 ? 1 : 2);
+  //   db = real_db;
+  // } 
+  else if (dbName == "lbtree") {
     real_db = new nali::lbtree_db<size_t, uint64_t>(total_thread_num);
+    db = real_db;
+  } else if (dbName == "dptree") {
+    real_db = new nali::dptree_db<size_t, uint64_t>(total_thread_num);
     db = real_db;
   } else if (dbName == "nap") {
     real_db = new nali::napfastfair_db<size_t, uint64_t>();

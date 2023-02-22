@@ -343,7 +343,7 @@ void initUseful();
 #ifdef VAR_KEY
 static int vkcmp(char* a, char* b) {
 /*
-    auto n = key_size_;
+    auto n = lbtree_key_size_;
     while(n--)
         if( *a != *b )
             return *a - *b;
@@ -351,7 +351,7 @@ static int vkcmp(char* a, char* b) {
             a++,b++;
     return 0;
 */
-    return memcmp(a, b, key_size_);
+    return memcmp(a, b, lbtree_key_size_);
 }
 #endif
 /* ---------------------------------------------------------------------- */

@@ -6,11 +6,6 @@
 #include "tbb/enumerable_thread_specific.h"
 #include "tbb/combinable.h"
 
-extern std::atomic<uint64_t> dram_allocated;
-extern std::atomic<uint64_t> pmem_allocated;
-extern std::atomic<uint64_t> dram_freed;
-extern std::atomic<uint64_t> pmem_freed;
-
 namespace ART {
 
     struct LabelDelete {
@@ -30,7 +25,6 @@ namespace ART {
         size_t thresholdCounter{0};
 
         ~DeletionList();
-
         LabelDelete *head();
 
         void add(void *n, uint64_t globalEpoch);
@@ -51,6 +45,7 @@ namespace ART {
         friend class EpocheGuard;
         Epoche &epoche;
         DeletionList &deletionList;
+
 
         DeletionList & getDeletionList() const;
     public:

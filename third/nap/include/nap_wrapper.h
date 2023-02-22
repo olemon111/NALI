@@ -68,7 +68,7 @@ private:
 };
 
 nap_fastfair_wrapper::nap_fastfair_wrapper() {
-  init_numa_pool();
+  init_nap_numa_pool();
   ff = new fastfair::btree();
   // nap测试中，先向raw index load部分KV，两边numa都插入一部分KV? 必须要做吗？
   std::cout << "nap insert some kvs into numa0" << std::endl;

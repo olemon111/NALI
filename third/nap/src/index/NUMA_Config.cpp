@@ -18,7 +18,7 @@ int numa_map[nap::kMaxThreadCnt];
 // }
 
 
-void init_numa_pool()
+void init_nap_numa_pool()
 {
   // core id => numa id
   for (int i = 0; i < 16; ++i)

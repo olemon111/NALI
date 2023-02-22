@@ -133,7 +133,7 @@ bool lbtree_wrapper::find(key_type key, uint64_t &value) {
   void *p;
   int pos = -1;
 #ifdef VAR_KEY
-  memcpy(k, key, key_size_);
+  memcpy(k, key, lbtree_key_size_);
   p = lbt->lookup((key_type)k, &pos);
 #else
   p = lbt->lookup(key, &pos);
@@ -157,20 +157,20 @@ bool lbtree_wrapper::insert(key_type key, const uint64_t &value) {
 #ifdef VAR_KEY // key size > 8
   #ifdef PMEM
     PMEMoid dst;
-    pmemobj_zalloc(pop_, &dst, key_size_, TOID_TYPE_NUM(char));
+    pmemobj_zalloc(pop_, &dst, lbtree_key_size_, TOID_TYPE_NUM(char));
     char* new_k = (char*)pmemobj_direct(dst);
-    memcpy(new_k, key, key_size_);
+    memcpy(new_k, key, lbtree_key_size_);
     key_type k = (key_type) new_k;
   #else
-    // char* new_k = new char[key_size_];
+    // char* new_k = new char[lbtree_key_size_];
     if (cur_addr >= end_addr)
     {
       printf("insufficient Memory for keys!\n");
       exit(1);
     }
-    memcpy(cur_addr, key, key_size_);
+    memcpy(cur_addr, key, lbtree_key_size_);
     key_type k = (key_type) cur_addr;
-    cur_addr += key_size_;
+    cur_addr += lbtree_key_size_;
   #endif
 #endif
   lbt->insert(key, (void*)value);

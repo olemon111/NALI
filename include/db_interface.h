@@ -5,8 +5,9 @@
 #include "../src/nali.h"
 #include "../third/alexol/alex.h"
 #include "../third/utree/utree.h"
-#include "../third/pactree/src/pactree_wrapper.h"
+// #include "../third/pactree/src/pactree_wrapper.h"
 #include "../third/lbtree/lbtree-src/lbtree_wrapper.hpp"
+#include "../third/dptree/dptree_wrapper.hpp"
 #include "../third/nap/include/nap_wrapper.h"
 #include "tbb/tbb.h"
 #include <utility>
@@ -200,52 +201,52 @@ namespace nali {
             utree::btree *db_;
     };
 
-    template <class T, class P>
-    class pactree_db : public Tree<T, P> {
-        public:
-            typedef std::pair<T, P> V;
-            pactree_db(int numa_num) {
-                init_numa_map();
-                db_ = new pactree_wrapper(numa_num);
-            }
+    // template <class T, class P>
+    // class pactree_db : public Tree<T, P> {
+    //     public:
+    //         typedef std::pair<T, P> V;
+    //         pactree_db(int numa_num) {
+    //             init_numa_map();
+    //             db_ = new pactree_wrapper(numa_num);
+    //         }
 
-            ~pactree_db() {
-                delete db_;
-            }
+    //         ~pactree_db() {
+    //             delete db_;
+    //         }
 
-            void bulk_load(const V values[], int num_keys) {
-                for (int i = 0; i < num_keys; i++) {
-                    db_->insert(values[i].first, values[i].second);
-                }
-            }
+    //         void bulk_load(const V values[], int num_keys) {
+    //             for (int i = 0; i < num_keys; i++) {
+    //                 db_->insert(values[i].first, values[i].second);
+    //             }
+    //         }
 
-            bool insert(const T& key, const P& payload) {
-                return db_->insert(key, payload);
-            }
+    //         bool insert(const T& key, const P& payload) {
+    //             return db_->insert(key, payload);
+    //         }
 
-            bool search(const T& key, P &payload) {
-                return db_->find(key, payload);
-            }
+    //         bool search(const T& key, P &payload) {
+    //             return db_->find(key, payload);
+    //         }
 
-            bool erase(const T& key, uint64_t *log_offset = nullptr) {
-                db_->remove(key);
-                return true;
-            }
+    //         bool erase(const T& key, uint64_t *log_offset = nullptr) {
+    //             db_->remove(key);
+    //             return true;
+    //         }
 
-            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                return db_->update(key, payload);
-            }
+    //         bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
+    //             return db_->update(key, payload);
+    //         }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                return db_->scan(key, to_scan, result);
-            }
+    //         int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
+    //             return db_->scan(key, to_scan, result);
+    //         }
 
-            void get_info() {
-            }
+    //         void get_info() {
+    //         }
 
-        private:
-            pactree_wrapper *db_;
-    };
+    //     private:
+    //         pactree_wrapper *db_;
+    // };
 
     template <class T, class P>
     class lbtree_db : public Tree<T, P> {
@@ -291,6 +292,52 @@ namespace nali {
 
         private:
             lbtree_wrapper *db_;
+    };
+
+    template <class T, class P>
+    class dptree_db : public Tree<T, P> {
+        public:
+            typedef std::pair<T, P> V;
+            dptree_db(int total_thrad_num) {
+                init_numa_map();
+                db_ = new dptree_wrapper(total_thrad_num);
+            }
+
+            ~dptree_db() {
+                delete db_;
+            }
+
+            void bulk_load(const V values[], int num_keys) {
+                for (int i = 0; i < num_keys; i++) {
+                    db_->insert(values[i].first, values[i].second);
+                }
+            }
+
+            bool insert(const T& key, const P& payload) {
+                return db_->insert(key, payload);
+            }
+
+            bool search(const T& key, P &payload) {
+                return db_->find(key, payload);
+            }
+
+            bool erase(const T& key, uint64_t *log_offset = nullptr) {
+                return db_->remove(key);
+            }
+
+            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
+                return db_->update(key, payload);
+            }
+
+            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
+                return db_->scan(key, to_scan, result);
+            }
+
+            void get_info() {
+            }
+
+        private:
+            dptree_wrapper *db_;
     };
 
     template <class T, class P>

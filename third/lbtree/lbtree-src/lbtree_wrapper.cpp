@@ -3,22 +3,22 @@
 
 constexpr const auto MEMPOOL_ALIGNMENT = 4096LL;
 
-size_t key_size_ = 0;
+size_t lbtree_key_size_ = 0;
 
 lbtree_wrapper *create_lbtree(int num_threads)
 {
   const char *pool_path_ = "/mnt/pmem0/zzy/nali.data";
   size_t pool_size_ = ((size_t)(1024 * 1024 * 32) * 1024);
 #ifdef VAR_KEY
-  key_size_ = opt.key_size;
-  if (key_size_ < 8)
-    key_size_ = 8;
-  if (key_size_ > 127)
+  lbtree_key_size_ = opt.key_size;
+  if (lbtree_key_size_ < 8)
+    lbtree_key_size_ = 8;
+  if (lbtree_key_size_ > 127)
   {
     printf("Variable-length key with lbtree_max length 127!\n");
     exit(1);
   }
-  printf("Variable-length key with size: %lld\n", key_size_);
+  printf("Variable-length key with size: %lld\n", lbtree_key_size_);
 #endif
 #ifdef TSX_FAKE
   puts("Using Faked TSX Instructions! Multithreaded not valid");
