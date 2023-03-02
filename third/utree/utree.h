@@ -1223,7 +1223,7 @@ int btree::scan(entry_key_t key, int scan_size, char* result) {
       n = n->next;
     }
   } else {
-    printf("Scan key not found.\n");
+    // printf("Scan key not found.\n");
   }
   // if (scanned != scan_size)
   //   printf("# of records scanned: %d", scanned);

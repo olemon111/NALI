@@ -232,6 +232,7 @@ class __attribute__((aligned(64))) PPage {
 
     // if space is not enough, need create a new ppage
     char *alloc(last_log_offest &log_info, size_t alloc_size) {
+      char *ret = nullptr;
       header_.rwlock.WLock();
       if (alloc_size > PPAGE_SIZE - header_.sz_allocated) {
         header_.ppage_id++;
@@ -243,10 +244,16 @@ class __attribute__((aligned(64))) PPage {
       log_info.numa_id_ = header_.numa_id;
       log_info.ppage_id_ = header_.ppage_id;
       log_info.log_offset_ = header_.sz_allocated;
-
-      char *ret = start_addr_ + header_.sz_allocated;
-      header_.sz_allocated += alloc_size;
-
+      ret = start_addr_ + header_.sz_allocated;
+      if (alloc_size == 32) {
+        if (unlikely(header_.sz_allocated == PPAGE_SIZE - 64)) {
+          header_.sz_allocated = 32;
+        } else {
+          header_.sz_allocated += 64;
+        }
+      } else {
+        header_.sz_allocated += alloc_size;
+      }
       header_.rwlock.WUnlock();
       return ret;
     }
@@ -440,7 +447,7 @@ public:
     // 返回log相对地址
     uint64_t insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
-      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(INSERT);
       last_log_offest log_info;
       log_info.vlen_ = p.vlen();
@@ -451,7 +458,7 @@ public:
 
     void erase(const T& key, uint64_t hash_key, uint64_t old_log_offset) {
       Pair_t<T, P> p(key);
-      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(DELETE);
       p.set_last_log_offest(old_log_offset);
       last_log_offest log_info;
@@ -461,7 +468,7 @@ public:
     }
 
     char* update_step1(const T& key, const P& payload, uint64_t hash_key, Pair_t<T, P> &p, uint64_t &cur_log_addr) {
-      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(UPDATE);
       last_log_offest log_info;
       log_info.vlen_ = p.vlen();

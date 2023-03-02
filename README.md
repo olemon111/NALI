@@ -97,3 +97,5 @@ get <key, log_addr> from dram index
 根据tuple的log_page_id查global_table得到log_page的起始地址
 根据veln读出value返回
 ```
+
+- pactree和dptree有冲突，不要一起make

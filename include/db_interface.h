@@ -77,7 +77,7 @@ namespace nali {
             alexoldb() {
                 db_ = new alexol::Alex<T, P>();
                 db_->set_max_model_node_size(1 << 24);
-                db_->set_max_data_node_size(1 << 18);
+                db_->set_max_data_node_size(1 << 17);
             }
 
             ~alexoldb() {

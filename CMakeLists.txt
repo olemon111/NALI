@@ -76,7 +76,7 @@ list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl n
 
 link_libraries(
     ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so
-    # ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libnali_pactree.so
+    ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libnali_pactree.so
     # ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libpactree.so
     ${PROJECT_SOURCE_DIR}/third/lbtree/libnali_lbtree.so
     ${PROJECT_SOURCE_DIR}/third/nap/build/libnali_nap.so

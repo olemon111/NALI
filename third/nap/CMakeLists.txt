@@ -3,14 +3,14 @@ project(Nap)
 
 set(CMAKE_CXX_COMPILER "g++")
 
-option(ENABLE_NAP_FLAG "Enable Nap" OFF) 
+option(ENABLE_NAP_FLAG "Enable Nap" ON) 
 option(RANGE_BENCH_FLAG "Enable Range " OFF) 
 option(TEST_LATENCY_FLAG "Enable Lantecy Test " OFF) 
 option(SWITCH_TEST_FLAG "Enable Switch Test " OFF)
 option(USE_GLOBAL_LOCK_FLAG "Enable Switch Global Lock Test " OFF) 
 option(RECOVERY_TEST_FLAG "Enable Recovery Test " OFF) 
 
-set(CMAKE_C_FLAGS "-Wall -Wsign-compare -O3 -g -DNDEBUG")
+set(CMAKE_C_FLAGS "-Wall -Wsign-compare -O3 -DNDEBUG")
 # set(CMAKE_C_FLAGS "-Wall -march=native -Wsign-compare -O3 -g")
 
 if(ENABLE_NAP_FLAG)
