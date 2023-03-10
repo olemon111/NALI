@@ -19,7 +19,6 @@ set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -
 add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)
-add_compile_definitions(CORES_PER_SOCKET=16) # for clht
 # message(STATUS "Persistence support: PMDK")
 
 # ##################### PMDK ####################

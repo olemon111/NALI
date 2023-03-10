@@ -23,7 +23,7 @@
 #define PERF_TEST
 #define USE_BULKLOAD
 // #define ZIPFAN_TEST
-// #define ONLY_INSERT
+#define ONLY_INSERT
 // #define RECOVERY_TEST
 // #define ZIPFAN_UPDATE_TEST
 // #define MIX_UPDATE_TEST
@@ -154,31 +154,6 @@ void show_help(char* prog) {
 }
 
 int main(int argc, char *argv[]) {
-#ifdef RECOVERY_TEST
-  Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
-  const size_t arr_size = 10000000;
-  auto values = new std::pair<KEY_TYPE, VALUE_TYPE>[arr_size];
-  #ifdef VARVALUE
-  std::string value(VALUE_LENGTH, '1');
-  #endif
-  for (size_t i = 0; i < arr_size; i++) {
-    values[i].first = i;
-    #ifdef VARVALUE
-    memcpy((char *)value.c_str(), &i, 8);
-    values[i].second = value;
-    #else
-    values[i].second = i;
-    #endif
-  }
-  real_db->bulk_load(values, arr_size);
-  std::cout << "start recovery" << std::endl;
-  auto ts = TIME_NOW;
-  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, true);
-  auto te = TIME_NOW;
-  auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  std::cout << "[Recovery time]: " << use_seconds << " s" << std::endl;
-  return 0;
-#else
     static struct option opts[] = {
   /* NAME               HAS_ARG            FLAG  SHORTNAME*/
     // {"thread",          required_argument, NULL, 't'},
@@ -257,10 +232,10 @@ int main(int argc, char *argv[]) {
   switch (Loads_type)
   {
     case 3:
-      data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/generate_random_ycsb.dat");;
+      data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/generate_random_ycsb.dat");
       break;
     case 4:
-      data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/generate_random_osm_longlat.dat");;
+      data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/generate_random_osm_longlat.dat");
       break;
     case 5:
       data_base = load_data_from_osm<uint64_t>("/home/zzy/dataset/generate_random_osm_longtitudes.dat");
@@ -293,6 +268,27 @@ int main(int argc, char *argv[]) {
     thread_id_arr.push_back(16+i);
   }
 
+#ifdef RECOVERY_TEST
+  Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
+  {
+    BULKLOAD_SIZE = 10000000;
+    auto values = new std::pair<KEY_TYPE, uint64_t>[BULKLOAD_SIZE];
+    for (int i = 0; i < BULKLOAD_SIZE; i++) {
+      values[i].first = data_base[i+250000000];
+      values[i].second = data_base[i+250000000];
+    }
+    std::sort(values, values + BULKLOAD_SIZE, [&](auto const& a, auto const& b) { return a.first < b.first; });
+    real_db->bulk_load(values, BULKLOAD_SIZE);
+    delete [] values;
+  }
+  std::cout << "start recovery" << std::endl;
+  auto ts = TIME_NOW;
+  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, true, 16);
+  auto te = TIME_NOW;
+  auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+  std::cout << "[Recovery time]: " << use_seconds << " s" << std::endl;
+  return 0;
+#else
   Tree<KEY_TYPE, VALUE_TYPE> *db = nullptr;
   if  (dbName == "alexol") {
     Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
@@ -345,7 +341,7 @@ int main(int argc, char *argv[]) {
 
     if (dbName == "alexol" || dbName == "apex") {
       std::sort(values, values + BULKLOAD_SIZE,
-        [](auto const& a, auto const& b) { return a.first < b.first; });
+        [&](auto const& a, auto const& b) { return a.first < b.first; });
     }
 
     LOG_INFO("@@@@ BULK LOAD START @@@@");

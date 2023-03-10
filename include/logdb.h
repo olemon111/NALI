@@ -152,7 +152,8 @@ private:
                 #endif
                 if (recovery) {
                     // log_kv_->recovery_logkv(db, recovery_thread_num);
-                    log_kv_->recovery_logkv(db, recovery, VALUE_LENGTH);
+                    std::cout << "recovery thread nums:" << recovery_thread_num << std::endl;
+                    log_kv_->recovery_logkv(db, recovery_thread_num, VALUE_LENGTH);
                 }
                 // std::atomic<int> gc_thread_id(0);
                 // const int gc_thread_num = 8;
@@ -345,9 +346,12 @@ private:
                 // or do work itself
                 for (int i = 0; i < scan_size; i++) {
                     result[i].first = t_values[i].first;
-                    nali::Pair_t<T, P> pt;
-                    pt.load((char*)t_values[i].second);
-                    result[i].second = pt.value();
+            
+                    #ifdef VARVALUE
+                        result[i].second.assign(((char*)t_values[i].second) + 26, VALUE_LENGTH);
+                    #else
+                        memcpy(&result[i].second, (char*)t_values[i].second + 28, 8);
+                    #endif
                 }
                 #endif
 

@@ -9,8 +9,8 @@ function Run() {
     thread=$5
     valuesize=$6
 
-    rm -rf /mnt/pmem0/zzy/*
-    rm -rf /mnt/pmem1/zzy/*
+    # rm -rf /mnt/pmem0/zzy/*
+    # rm -rf /mnt/pmem1/zzy/*
     Loadname="ycsb-200m"
     loadnum=190000000
     date | tee multi-${dbname}-${Loadname}-th${thread}.txt
