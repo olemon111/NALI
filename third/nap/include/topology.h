@@ -24,18 +24,18 @@
 
 #include "nap_common.h"
 
-inline void bindCore(uint16_t core) {
+// inline void bindCore(uint16_t core) {
 
-  // // printf("bind to %d\n", core);
-  // cpu_set_t cpuset;
-  // CPU_ZERO(&cpuset);
-  // CPU_SET(core, &cpuset);
-  // int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-  // if (rc != 0) {
-  //   printf("can't bind core %d!", core);
-  //   exit(-1);
-  // }
-}
+//   // // printf("bind to %d\n", core);
+//   // cpu_set_t cpuset;
+//   // CPU_ZERO(&cpuset);
+//   // CPU_SET(core, &cpuset);
+//   // int rc = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+//   // if (rc != 0) {
+//   //   printf("can't bind core %d!", core);
+//   //   exit(-1);
+//   // }
+// }
 
 
 extern int numa_map[nap::kMaxThreadCnt];

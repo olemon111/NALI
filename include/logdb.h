@@ -3,58 +3,139 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <string>
+#include <list>
+#include <unordered_map>
 
 #include "tree.h"
 #include "nali_kvlog.h"
+#include "util/rwlock.h"
 #include "util/utils.h"
 #include "util/xxhash.h"
-#include "util/concurrentqueue.h"
 #include "thread_pool.h"
 #include "../src/nali_kvlog.h"
 
 // 线程池宏
-// #define SCAN_USE_THREAD_POOL
+#define SCAN_USE_THREAD_POOL
 #define PER_THREAD_POOL_THREADS 8
 
+// #define USE_READ_CACHE
+#ifdef USE_READ_CACHE
+#define SAMPLE_INTERVAL 10
+#define STATISTIC_CACHE
+extern bool start_cache;
+#endif
+#ifdef STATISTIC_CACHE
+extern size_t cache_hit_cnt[64];
+#endif
+
+extern size_t VALUE_LENGTH;
 extern thread_local size_t global_thread_id;
+thread_local size_t get_cnt = 0;
 
 namespace nali {
 
-struct logdb_statistic {
-    #ifdef USE_PROXY
-    size_t remote_read_times;
-    #endif
+template<typename key_t, typename value_t>
+class lru_cache {
+public:
+	typedef typename std::pair<key_t, value_t> key_value_pair_t;
+	typedef typename std::list<key_value_pair_t>::iterator list_iterator_t;
+
+	lru_cache(size_t max_size) :
+		_max_size(max_size) {
+	}
+	
+	void put(const key_t& key, const value_t& value) {
+		auto it = _cache_items_map.find(key);
+		_cache_items_list.push_front(key_value_pair_t(key, value));
+		if (it != _cache_items_map.end()) {
+			_cache_items_list.erase(it->second);
+			_cache_items_map.erase(it);
+		}
+		_cache_items_map[key] = _cache_items_list.begin();
+		
+		if (_cache_items_map.size() > _max_size) {
+			auto last = _cache_items_list.end();
+			last--;
+			_cache_items_map.erase(last->first);
+			_cache_items_list.pop_back();
+		}
+	}
+	
+	bool get(const key_t& key, value_t &val) {
+		auto it = _cache_items_map.find(key);
+		if (it == _cache_items_map.end()) {
+            return false;
+		} else {
+			// _cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
+			val = it->second->second;
+            return true;
+		}
+	}
+	
+	bool exists(const key_t& key) const {
+		return _cache_items_map.find(key) != _cache_items_map.end();
+	}
+	
+	size_t size() const {
+		return _cache_items_map.size();
+	}
+	
+private:
+	std::list<key_value_pair_t> _cache_items_list;
+	std::unordered_map<key_t, list_iterator_t> _cache_items_map;
+	size_t _max_size;
 };
 
-#ifdef USE_PROXY
-extern thread_local size_t random_thread_id[numa_max_node]; 
-#endif
-
-#ifdef USE_PROXY
-    template <class P>
-    struct read_req {
-        char *value_ptr;
-        std::atomic<int> user_cnt;
-        bool is_ready;
-        P *value;
-        read_req() : value_ptr(nullptr), is_ready(false), value(nullptr), user_cnt(2) {}
-        read_req(char *addr, P *paylaod) : value_ptr(addr), is_ready(false), value(paylaod), user_cnt(2) {}
-        void set_req(char *addr, P *paylaod) {
-            value_ptr = addr;
-            is_ready = false;
-            value_ptr = paylaod;
-            user_cnt = 2;
+template<typename key_t, typename value_t>
+class shard_lru_cache {
+public:
+    shard_lru_cache(size_t shards = 10485763, size_t per_cache_cap = 16) : shards_(shards) {
+        cache_arr_ = new lru_cache<uint64_t, uint64_t>*[shards];
+        for (int i = 0; i < shards; i++) {
+            cache_arr_[i] = new lru_cache<uint64_t, uint64_t>(per_cache_cap);
         }
-    };
-#endif
+        latch_arr_ = new SpinLatch*[shards];
+        for (int i = 0; i < shards; i++) {
+            latch_arr_[i] = new SpinLatch();
+        }
+    }
+
+    ~shard_lru_cache() {
+        delete [] latch_arr_;
+        delete [] cache_arr_;
+    }
+
+    bool get(const key_t& key, uint64_t key_hash, value_t &value) {
+        size_t shard_id = key_hash % shards_;
+        latch_arr_[shard_id]->RLock();
+        bool ret = cache_arr_[shard_id]->get(key, value);
+        latch_arr_[shard_id]->RUnlock();
+        return ret;
+    }
+
+    void put(const key_t& key, uint64_t key_hash, const value_t& value) {
+        size_t shard_id = key_hash % shards_;
+        latch_arr_[shard_id]->WLock();
+        cache_arr_[shard_id]->put(key, value);
+        latch_arr_[shard_id]->WUnlock();
+    }
+
+private:
+    lru_cache<key_t, value_t> **cache_arr_;
+    SpinLatch **latch_arr_;
+    size_t shards_;
+};
 
     template <class T, class P>
     static inline void scan_help(std::pair<T, P>* &result, const std::pair<T, uint64_t> *t_values, const std::vector<int> pos_arr, int *complete_elems) {
         for (int pos : pos_arr) {
             result[pos].first = t_values[pos].first;
-            nali::Pair_t<T, P> pt;
-            pt.load((char*)t_values[pos].second);
-            result[pos].second = pt.value();
+            
+            #ifdef VARVALUE
+                result[pos].second.assign(((char*)t_values[pos].second) + 26, VALUE_LENGTH);
+            #else
+                memcpy(&result[pos].second, (char*)t_values[pos].second + 28, 8);
+            #endif
         }
         ADD(complete_elems, pos_arr.size());
     }
@@ -63,14 +144,15 @@ extern thread_local size_t random_thread_id[numa_max_node];
     class logdb : public Tree<T, P> {
         public:
             typedef std::pair<T, P> V;
-            logdb(Tree<T, uint64_t> *db, const std::vector<std::vector<int>> &thread_arr, bool recovery = false, size_t recovery_thread_num = 1) : db_(db) {
+            logdb(Tree<T, uint64_t> *db, bool recovery = false, size_t recovery_thread_num = 1) : db_(db) {
                 log_kv_ = new nali::LogKV<T, P>(recovery);
-                thread_ids = thread_arr;
+                #ifdef SCAN_USE_THREAD_POOL
                 for (int i = 0; i < numa_node_num; i++)
                     thread_pool_[i] = new ThreadPool(i, PER_THREAD_POOL_THREADS);
-
+                #endif
                 if (recovery) {
-                    log_kv_->recovery_logkv(db, recovery_thread_num);
+                    // log_kv_->recovery_logkv(db, recovery_thread_num);
+                    log_kv_->recovery_logkv(db, recovery, VALUE_LENGTH);
                 }
                 // std::atomic<int> gc_thread_id(0);
                 // const int gc_thread_num = 8;
@@ -112,11 +194,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
                 uint64_t log_offset = log_kv_->insert(key, payload, key_hash);
                 bool ret = db_->insert(key, log_offset);
-
-                #ifdef USE_PROXY
-                check_read_queue();
-                #endif
-
                 return ret;
             }
 
@@ -134,6 +211,16 @@ extern thread_local size_t random_thread_id[numa_max_node];
             }
 
             bool search(const T& key, P &payload) {
+                #ifdef USE_READ_CACHE
+                if (start_cache) {
+                    auto iter = cache_[global_thread_id].find(key);
+                    if (iter != cache_[global_thread_id].end()) {
+                        payload = iter->second;
+                        cache_hit_cnt[global_thread_id]++;
+                        return true;
+                    }
+                }
+                #endif
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
 
@@ -143,49 +230,18 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     return ret;
                 last_log_offest log_info(addr_info);
                 uint64_t pmem_addr = reinterpret_cast<uint64_t>(log_kv_->get_addr(log_info, key_hash));
-                
-                #ifdef USE_PROXY
-                    int8_t numa_id = log_info.numa_id_;
-                    if (numa_id == get_numa_id(global_thread_id)) {
-                        payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
-                    } else {
-                        // send read req to remote numa
-                        read_req<P> *req_ = new read_req<P>((char*)pmem_addr, payload);
-                        readreq_queue_[random() % thread_ids[numa_id].size()].enqueue(req_);
-                        auto time_begin = TIME_NOW;
-                        // check is_ready
-                        while (!req_->is_ready) {
-                            check_read_queue(1);
-                            // handle timeout
-                            auto time_now = TIME_NOW;
-                            if (std::chrono::duration_cast<std::chrono::microseconds>(time_now - time_begin).count() > 0.4) {
-                                int cnt_before = 2;
-                                int cnt_after = 1;
-                                bool res = req_->user_cnt.compare_exchange_strong(cnt_before, cnt_after, std::memory_order_acquire);
-                                if (res == false) { 
-                                    while (!req_->is_ready) {
-                                        check_read_queue(1);
-                                    }
-                                    delete req_;
-                                } else { // do remote read self
-                                    payload = ((nali::Pair_t<T, P> *)pmem_addr)->value();
-                                }
-                                return ret;
-                            }
-                        }
-                    }
-                    check_read_queue();
+
+                #ifdef VARVALUE
+                    payload.assign(((char*)pmem_addr) + 26, log_info.vlen_);
                 #else
-                    nali::Pair_t<T, P> pt;
-                    pt.load((char*)pmem_addr);
-                    payload = pt.value();
-                    
-                    // #ifdef VARVALUE
-                    //     // std::string v;
-                    //     payload.assign(((char*)pmem_addr) + 28, log_info.vlen_);
-                    // #else
-                        // payload = ((nali::Pair_t<T, P>*)pmem_addr)->_value;
-                    // #endif
+                    memcpy(&payload, (char*)pmem_addr + 28, 8);
+                #endif
+
+                #ifdef USE_READ_CACHE
+                if (start_cache) {
+                    if (get_cnt++ % SAMPLE_INTERVAL == 0)
+                        cache_[global_thread_id][key] = payload;
+                }
                 #endif
 
                 return ret;
@@ -198,10 +254,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 uint64_t old_log_offset;
                 bool ret = db_->erase(key, &old_log_offset);
                 log_kv_->erase(key, key_hash, old_log_offset);
-                #ifdef USE_PROXY
-                check_read_queue();
-                #endif
-
                 return ret;
             }
 
@@ -213,10 +265,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 uint64_t cur_log_addr;
                 char *log_addr = log_kv_->update_step1(key, payload, key_hash, p, cur_log_addr);
 
-                #ifdef USE_PROXY
-                check_read_queue();
-                #endif
-
                 uint64_t _log_offset;
                 bool ret = db_->update(key, cur_log_addr, &_log_offset);
                 if (!ret)
@@ -227,10 +275,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     p.set_last_log_offest(_log_offset);
                     p.store_persist(log_addr);
                 }
-
-                #ifdef USE_PROXY
-                check_read_queue();
-                #endif
 
                 return ret;
             }
@@ -249,28 +293,52 @@ extern thread_local size_t random_thread_id[numa_max_node];
                     last_log_offest log_info(t_values[i].second);
                     t_values[i].second = reinterpret_cast<uint64_t>(log_kv_->get_addr(log_info, key_hash));
                     
-                #ifdef SCAN_USE_THREAD_POOL
+                    #ifdef SCAN_USE_THREAD_POOL
                     {
                         numa_pos_arr[log_info.numa_id_].push_back(i);
                         // batch send to background thread,不同numa vlog发送到对应线程池处理
-                        // if (numa_pos_arr[log_info.numa_id_].size() % 45 == 0) {
-                        //     thread_pool_[log_info.numa_id_]->execute(scan_help<T, P>, result, t_values, numa_pos_arr[log_info.numa_id_], &complete_reads);
-                        //     numa_pos_arr[log_info.numa_id_].clear();
-                        // }
+                        if (numa_pos_arr[log_info.numa_id_].size() % 15 == 0) {
+                            thread_pool_[log_info.numa_id_]->execute(scan_help<T, P>, result, t_values, numa_pos_arr[log_info.numa_id_], &complete_reads);
+                            numa_pos_arr[log_info.numa_id_].clear();
+                        }
                         if (unlikely(i == scan_size-1)) {
-                            for (int j = 0; j < numa_node_num; j++) {
-                                if (numa_pos_arr[j].size() != 0) {
-                                    thread_pool_[j]->execute(scan_help<T,P>, result, t_values, numa_pos_arr[j], &complete_reads);
+                            // func1: send to background
+                            {
+                                for (int j = 0; j < numa_node_num; j++) {
+                                    if (numa_pos_arr[j].size() != 0) {
+                                        thread_pool_[j]->execute(scan_help<T,P>, result, t_values, numa_pos_arr[j], &complete_reads);
+                                    }
+                                }
+                                std::this_thread::yield();
+                                // wait until work is complete
+                                while (LOAD(&complete_reads) != scan_size) {
+                                    std::this_thread::yield();
                                 }
                             }
-                            std::this_thread::yield();
-                            // wait until work is complete
-                            while (LOAD(&complete_reads) != scan_size) {
-                                std::this_thread::yield();
-                            }
+                            // // func2: do itself?
+                            // {
+                            //     for (int j = 0; j < numa_node_num; j++) {
+                            //         if (numa_pos_arr[j].size() != 0) {
+                            //             // thread_pool_[j]->execute(scan_help<T,P>, result, t_values, numa_pos_arr[j], &complete_reads);
+                            //             // TODO
+                            //             for (int pos :  numa_pos_arr[j]) {
+                            //                 result[pos].first = t_values[pos].first;
+
+                            //                 #ifdef VARVALUE
+                            //                     result[pos].second.assign(((char*)t_values[pos].second) + 26, VALUE_LENGTH);
+                            //                 #else
+                            //                     memcpy(&result[pos].second, (char*)t_values[pos].second + 28, 8);
+                            //                 #endif
+                            //             }
+                            //         }
+                            //     }
+                            //     while (LOAD(&complete_reads) != scan_size) {
+                            //         std::this_thread::yield();
+                            //     }
+                            // }
                         }
                     }
-                #endif
+                    #endif
                 }
 
                 #ifndef SCAN_USE_THREAD_POOL
@@ -283,9 +351,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
                 }
                 #endif
 
-                #ifdef USE_PROXY
-                check_read_queue();
-                #endif
                 return scan_size;
             }
 
@@ -294,24 +359,6 @@ extern thread_local size_t random_thread_id[numa_max_node];
             }
 
         private:
-            #ifdef USE_PROXY
-            void check_read_queue(int loop_times = 3) {
-                // check read_req queue
-                read_req<P> *req_ = nullptr;
-                while (loop_times-- && readreq_queue_[global_thread_id].try_dequeue(req_)) {
-                    int cnt_before = 2;
-                    int cnt_after = 1;
-                    bool res = req_->user_cnt.compare_exchange_strong(cnt_before, cnt_after, std::memory_order_acquire);
-                    if (res == false) { // request is timeout
-                        delete req_;
-                    } else {
-                        *(req_->value) = ((nali::Pair_t<T, P> *)(req_->value_ptr))->value();
-                        req_->is_ready = true;
-                    }
-                }
-            }
-            #endif
-
             // 目前只支持定长32B log
             void background_gc(logdb *db, nali::LogKV<T, P> *log_kv_, int begin_pos, int end_pos) {
                 sleep(100);
@@ -372,11 +419,12 @@ extern thread_local size_t random_thread_id[numa_max_node];
         private:
             Tree<T, uint64_t> *db_;
             nali::LogKV<T, P> *log_kv_;
-            std::vector<std::vector<int>> thread_ids; // per_numa_ids
+            #ifdef SCAN_USE_THREAD_POOL
             ThreadPool *thread_pool_[numa_node_num];
+            #endif
             std::vector<std::thread> gc_threads;
-            #ifdef USE_PROXY
-            moodycamel::ConcurrentQueue<read_req<P>*> readreq_queue_[max_thread_num];
+            #ifdef USE_READ_CACHE
+            std::unordered_map<size_t, size_t> cache_[64];
             #endif
     };
 }

@@ -18,7 +18,7 @@
 #define PREFETCH
 #ifdef PREFETCH
     #include "nodepref.h"
-    #define LEAF_LINE_NUM sizeof(BTreeLeaf<DPKey, Value>)/64
+    #define DPTREE_LEAF_LINE_NUM sizeof(BTreeLeaf<DPKey, Value>)/64
 #endif
 
 extern size_t dptree_key_size_;

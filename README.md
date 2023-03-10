@@ -99,3 +99,11 @@ get <key, log_addr> from dram index
 ```
 
 - pactree和dptree有冲突，不要一起make
+
+- TODO
+  - pactree mixupdate, mixinsert
+  - nali var value length test(proxy test)
+  - fastfair 2-32
+  - nap test
+  - nali var value lenght recovery
+  - nvm dram use

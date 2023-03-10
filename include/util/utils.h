@@ -202,6 +202,8 @@ private:
   std::atomic<uint8_t> l;
 };
 
+}
+
 static inline void bindCore(uint16_t core) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -212,6 +214,3 @@ static inline void bindCore(uint16_t core) {
         exit(-1);
     }
 }
-
-}
-

@@ -19,7 +19,7 @@ set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -
 add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)
-
+add_compile_definitions(CORES_PER_SOCKET=16) # for clht
 # message(STATUS "Persistence support: PMDK")
 
 # ##################### PMDK ####################
@@ -63,8 +63,8 @@ include_directories(third)
 # include_directories(third/pactree/include)
 # include_directories(third/pactree/src)
 # include_directories(third/pactree/src)
-include_directories(third/lbtree/common)
-include_directories(third/lbtree/lbtree-src)
+# include_directories(third/lbtree/common)
+# include_directories(third/lbtree/lbtree-src)
 include_directories(third/nap/include)
 include_directories(third/nap/src)
 include_directories(third/dptree/include)
@@ -78,7 +78,7 @@ link_libraries(
     ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so
     ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libnali_pactree.so
     # ${PROJECT_SOURCE_DIR}/third/pactree/build/src/libpactree.so
-    ${PROJECT_SOURCE_DIR}/third/lbtree/libnali_lbtree.so
+    # ${PROJECT_SOURCE_DIR}/third/lbtree/libnali_lbtree.so
     ${PROJECT_SOURCE_DIR}/third/nap/build/libnali_nap.so
     ${PROJECT_SOURCE_DIR}/third/dptree/build/libnali_dptree.so
 )
@@ -87,10 +87,6 @@ link_libraries(
 # add_dependencies(benchmark PMDK)
 # target_link_libraries(benchmark PRIVATE ${libs_to_link})
 
-add_executable(nali_multi_bench benchmark/multi_bench.cpp )            
+add_executable(nali_multi_bench benchmark/multi_bench.cpp)            
 # add_dependencies(nali_multi_bench PMDK)
 target_link_libraries(nali_multi_bench PRIVATE ${libs_to_link})
-
-# # nvm_test
-# add_executable(nvm_test background_test/nvm_test.cpp)            
-# target_link_libraries(nvm_test PRIVATE ${libs_to_link})

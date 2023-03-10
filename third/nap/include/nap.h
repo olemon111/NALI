@@ -628,7 +628,7 @@ template <class T> void Nap<T>::nap_shift() {
     return a.first < b.first;
   };
   global_thread_id = 33;
-  bindCore(global_thread_id);
+  // bindCore(global_thread_id);
 
   CM = new CountMin(hot_cnt);
 
@@ -641,7 +641,7 @@ template <class T> void Nap<T>::nap_shift() {
 
   shift_thread_is_ready.store(true);
 
-  printf("shift thread finished init [%d].\n", global_thread_id);
+  printf("shift thread finished init [%ld].\n", global_thread_id);
 
   const int kPreHotest = 8;
   std::string pre_hotest_keys[kPreHotest];

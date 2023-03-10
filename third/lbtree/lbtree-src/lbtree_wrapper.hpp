@@ -107,7 +107,7 @@ lbtree_wrapper::lbtree_wrapper(void *nvm_addr, bool recover)
   lbt->check(&start, &end);
   for (auto i = start; i < end && delbulk; i++)
     lbt->del(i);
-  printf("lbt->check() start: %lld, end: %lld\n", start, end);
+  printf("lbt->check() start: %ld, end: %ld\n", start, end);
 #endif
 }
 

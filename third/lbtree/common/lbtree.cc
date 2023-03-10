@@ -1007,7 +1007,7 @@ void lbtree::insert(key_type key, void *ptr)
     
         // 2.6 clwb newp, clwb lp line[3] and sfence
         #ifdef NVMPOOL_REAL
-        LOOP_FLUSH(clwb, newp, LEAF_LINE_NUM);
+        LOOP_FLUSH(clwb, newp, LBTREE_LEAF_LINE_NUM);
         clwb(&(lp->next[0]));
         sfence();
         #endif

@@ -342,101 +342,101 @@ static void inline NODE_PREF(void *bbp)
 static void inline LEAF_PREF(void *bbp)
 {
      pref(*((char *)bbp));
-#if LEAF_LINE_NUM >= 2
+#if DPTREE_LEAF_LINE_NUM >= 2
      pref(*((char *)bbp + CACHE_LINE_SIZE));
 #endif
-#if LEAF_LINE_NUM >= 3
+#if DPTREE_LEAF_LINE_NUM >= 3
      pref(*((char *)bbp + CACHE_LINE_SIZE * 2));
 #endif
-#if LEAF_LINE_NUM >= 4
+#if DPTREE_LEAF_LINE_NUM >= 4
      pref(*((char *)bbp + CACHE_LINE_SIZE * 3));
 #endif
-#if LEAF_LINE_NUM >= 5
+#if DPTREE_LEAF_LINE_NUM >= 5
      pref(*((char *)bbp + CACHE_LINE_SIZE * 4));
 #endif
-#if LEAF_LINE_NUM >= 6
+#if DPTREE_LEAF_LINE_NUM >= 6
      pref(*((char *)bbp + CACHE_LINE_SIZE * 5));
 #endif
-#if LEAF_LINE_NUM >= 7
+#if DPTREE_LEAF_LINE_NUM >= 7
      pref(*((char *)bbp + CACHE_LINE_SIZE * 6));
 #endif
-#if LEAF_LINE_NUM >= 8
+#if DPTREE_LEAF_LINE_NUM >= 8
      pref(*((char *)bbp + CACHE_LINE_SIZE * 7));
 #endif
-#if LEAF_LINE_NUM >= 9
+#if DPTREE_LEAF_LINE_NUM >= 9
      pref(*((char *)bbp + CACHE_LINE_SIZE * 8));
 #endif
-#if LEAF_LINE_NUM >= 10
+#if DPTREE_LEAF_LINE_NUM >= 10
      pref(*((char *)bbp + CACHE_LINE_SIZE * 9));
 #endif
-#if LEAF_LINE_NUM >= 11
+#if DPTREE_LEAF_LINE_NUM >= 11
      pref(*((char *)bbp + CACHE_LINE_SIZE * 10));
 #endif
-#if LEAF_LINE_NUM >= 12
+#if DPTREE_LEAF_LINE_NUM >= 12
      pref(*((char *)bbp + CACHE_LINE_SIZE * 11));
 #endif
-#if LEAF_LINE_NUM >= 13
+#if DPTREE_LEAF_LINE_NUM >= 13
      pref(*((char *)bbp + CACHE_LINE_SIZE * 12));
 #endif
-#if LEAF_LINE_NUM >= 14
+#if DPTREE_LEAF_LINE_NUM >= 14
      pref(*((char *)bbp + CACHE_LINE_SIZE * 13));
 #endif
-#if LEAF_LINE_NUM >= 15
+#if DPTREE_LEAF_LINE_NUM >= 15
      pref(*((char *)bbp + CACHE_LINE_SIZE * 14));
 #endif
-#if LEAF_LINE_NUM >= 16
+#if DPTREE_LEAF_LINE_NUM >= 16
      pref(*((char *)bbp + CACHE_LINE_SIZE * 15));
 #endif
-#if LEAF_LINE_NUM >= 17
+#if DPTREE_LEAF_LINE_NUM >= 17
      pref(*((char *)bbp + CACHE_LINE_SIZE * 16));
 #endif
-#if LEAF_LINE_NUM >= 18
+#if DPTREE_LEAF_LINE_NUM >= 18
      pref(*((char *)bbp + CACHE_LINE_SIZE * 17));
 #endif
-#if LEAF_LINE_NUM >= 19
+#if DPTREE_LEAF_LINE_NUM >= 19
      pref(*((char *)bbp + CACHE_LINE_SIZE * 18));
 #endif
-#if LEAF_LINE_NUM >= 20
+#if DPTREE_LEAF_LINE_NUM >= 20
      pref(*((char *)bbp + CACHE_LINE_SIZE * 19));
 #endif
-#if LEAF_LINE_NUM >= 21
+#if DPTREE_LEAF_LINE_NUM >= 21
      pref(*((char *)bbp + CACHE_LINE_SIZE * 20));
 #endif
-#if LEAF_LINE_NUM >= 22
+#if DPTREE_LEAF_LINE_NUM >= 22
      pref(*((char *)bbp + CACHE_LINE_SIZE * 21));
 #endif
-#if LEAF_LINE_NUM >= 23
+#if DPTREE_LEAF_LINE_NUM >= 23
      pref(*((char *)bbp + CACHE_LINE_SIZE * 22));
 #endif
-#if LEAF_LINE_NUM >= 24
+#if DPTREE_LEAF_LINE_NUM >= 24
      pref(*((char *)bbp + CACHE_LINE_SIZE * 23));
 #endif
-#if LEAF_LINE_NUM >= 25
+#if DPTREE_LEAF_LINE_NUM >= 25
      pref(*((char *)bbp + CACHE_LINE_SIZE * 24));
 #endif
-#if LEAF_LINE_NUM >= 26
+#if DPTREE_LEAF_LINE_NUM >= 26
      pref(*((char *)bbp + CACHE_LINE_SIZE * 25));
 #endif
-#if LEAF_LINE_NUM >= 27
+#if DPTREE_LEAF_LINE_NUM >= 27
      pref(*((char *)bbp + CACHE_LINE_SIZE * 26));
 #endif
-#if LEAF_LINE_NUM >= 28
+#if DPTREE_LEAF_LINE_NUM >= 28
      pref(*((char *)bbp + CACHE_LINE_SIZE * 27));
 #endif
-#if LEAF_LINE_NUM >= 29
+#if DPTREE_LEAF_LINE_NUM >= 29
      pref(*((char *)bbp + CACHE_LINE_SIZE * 28));
 #endif
-#if LEAF_LINE_NUM >= 30
+#if DPTREE_LEAF_LINE_NUM >= 30
      pref(*((char *)bbp + CACHE_LINE_SIZE * 29));
 #endif
-#if LEAF_LINE_NUM >= 31
+#if DPTREE_LEAF_LINE_NUM >= 31
      pref(*((char *)bbp + CACHE_LINE_SIZE * 30));
 #endif
-#if LEAF_LINE_NUM >= 32
+#if DPTREE_LEAF_LINE_NUM >= 32
      pref(*((char *)bbp + CACHE_LINE_SIZE * 31));
 #endif
-#if LEAF_LINE_NUM >= 33
-#error "LEAF_LINE_NUM must be <= 32!"
+#if DPTREE_LEAF_LINE_NUM >= 33
+#error "DPTREE_LEAF_LINE_NUM must be <= 32!"
 #endif
 }
 

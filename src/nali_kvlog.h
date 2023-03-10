@@ -11,12 +11,10 @@
 #include "rwlock.h"
 
 extern thread_local size_t global_thread_id;
-
 namespace nali {
 
 // #define USE_PROXY
-
-// #define VARVALUE
+#define VARVALUE
 
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
 using OP_VERSION = uint64_t;
@@ -190,9 +188,9 @@ public:
  * | op | version | key | vlen | value| last_log_offset| 
 */
 
-#define NALI_VERSION_SHARDS 251
+#define NALI_VERSION_SHARDS 256
 
-#define MAX_LOF_FILE_ID 64
+#define MAX_LOF_FILE_ID 256
 // need a table to store all old logfile's start offset
 //  need query the table to get real offset
 struct global_ppage_meta {
@@ -341,6 +339,7 @@ public:
       }
     }
 
+    // TODO(zzy) : NOT TEST
     void recovery_logkv(Tree<T, uint64_t> *db_, size_t recovery_thread_num) {
       // read all pmem log file, each thread scan a range hash log from newest to oldest
       // mmap all log file and set g_ppage_s_addr_arr_
@@ -441,6 +440,74 @@ public:
             }
           }
         });
+      }
+    }
+
+    // simple version, assume only has insert log
+    void recovery_logkv(Tree<T, uint64_t> *db_, size_t recovery_thread_num, size_t val_size) {
+      size_t log_size = val_size == 8 ? 32 : 26 + val_size;
+      // read all pmem log file, each thread scan a range hash log from newest to oldest
+      // mmap all log file and set g_ppage_s_addr_arr_
+      // new PPage and set PPage newest page id
+      for (int i = 0; i < numa_node_num; i++) {
+          std::string dirname = "/mnt/pmem" + std::to_string(i) + "/zzy";
+          std::vector<std::string> files;
+          loadfiles(dirname, files);
+          for (const std::string &file : files) {
+            size_t pos0 = file.find("nali_") + strlen("nali_");
+            size_t pos1 = file.find("_", pos0) + strlen("_");
+            pos0 = file.find("_", pos1);
+            size_t hash_id = std::stoi(file.substr(pos1, pos0-pos1));
+            pos0 += strlen("_");
+            pos1 = file.find("_", pos0);
+            size_t ppage_id = std::stoi(file.substr(pos0, pos1-pos0));
+            size_t mapped_len;
+            int is_pmem;
+            void *ptr = nullptr;
+            if((ptr = pmem_map_file(file.c_str(), PPAGE_SIZE, PMEM_FILE_CREATE, 0666,
+                                    &mapped_len, &is_pmem)) == NULL) {
+                std::cout << "mmap pmem file fail" << std::endl;
+                exit(1);
+            }
+            set_page_start_addr(i, hash_id, ppage_id, (char*)ptr);
+          }
+      }
+      // scan each log
+      std::vector<std::thread> recovery_threads;
+      std::atomic_int thread_idx_count(0);
+      int perthread_hash_nums = NALI_VERSION_SHARDS / recovery_thread_num;
+      for (int thread_cnt = 0; thread_cnt < recovery_thread_num; thread_cnt++) {
+        recovery_threads.emplace_back([&](){
+          global_thread_id = thread_idx_count.fetch_add(1);
+          int begin_hashid = global_thread_id * perthread_hash_nums;
+          int end_hashid = (global_thread_id == recovery_thread_num-1) ? NALI_VERSION_SHARDS : (begin_hashid + perthread_hash_nums);
+          for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+            size_t core_id = numa_id == 0 ? global_thread_id : global_thread_id + 16 * numa_id;
+            bindCore(core_id);
+            for (int hash_id = begin_hashid; hash_id < end_hashid; hash_id++) {
+              for (int ppage_id = ppage_[numa_id][hash_id]->header_.ppage_id; ppage_id >= 0; ppage_id--) {
+                size_t log_offset = 0;
+                char *addr = g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][ppage_id];
+                while (addr && log_offset < PPAGE_SIZE) {
+                  nali::Pair_t<T, P> *log_ = (Pair_t<T, P> *)((addr+log_offset));
+                  if (log_->op == OP_t::INSERT) {
+                    db_->insert(log_->key(), log_->u_offset);
+                  }
+                  if (log_->vlen() == UINT16_MAX) {
+                    break;
+                  }
+                  log_offset += log_size;
+                }
+                if (ppage_id == ppage_[numa_id][hash_id]->header_.ppage_id) {
+                  // update ppage sz_allocated
+                  ppage_[numa_id][hash_id]->header_.sz_allocated = log_offset;
+                }
+              }
+            }
+          }
+        });
+        for (auto& t : recovery_threads)
+          t.join();
       }
     }
 

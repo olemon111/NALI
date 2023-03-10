@@ -33,7 +33,7 @@
 
 // the size of a tree node
 #define NONLEAF_LINE_NUM 4 // 256B
-#define LEAF_LINE_NUM 4    // 256B
+#define LBTREE_LEAF_LINE_NUM 4    // 256B
 
 // the number of leaf nodes to prefetch ahead in jump pointer array
 // prefetching
@@ -47,7 +47,7 @@
 
 // node size
 #define NONLEAF_SIZE (LBTREE_CACHE_LINE_SIZE * NONLEAF_LINE_NUM)
-#define LEAF_SIZE (LBTREE_CACHE_LINE_SIZE * LEAF_LINE_NUM)
+#define LEAF_SIZE (LBTREE_CACHE_LINE_SIZE * LBTREE_LEAF_LINE_NUM)
 
 // key size and pointer size: 8B
 typedef size_t key_type;
