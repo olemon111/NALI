@@ -1,7 +1,6 @@
-./build.sh
-cd build
 #!/bin/bash
-BUILDDIR=$(dirname "$0")/../build/
+./build.sh
+BUILDDIR=$(dirname "$0")/build/
 Loadname="longlat-400m"
 function Run() {
     dbname=$1
@@ -13,38 +12,55 @@ function Run() {
 
     Loadname="ycsb-200m"
     loadnum=190000000
-    date | tee multi-${dbname}-${Loadname}-th${thread}.txt
-    # gdb --args \
-    # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
-    # numactl --cpunodebind=1 --membind=1 \
-    LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes \
-    timeout 600 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
+    date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}.txt
+    timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-        --thread-nums $thread | tee -a multi-${dbname}-${Loadname}-th${thread}.txt
+        --thread-nums $thread --bgthreads $bgthreads | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}.txt
     echo "----------------"
-    # sleep 10
+    sleep 5
+
+    # # Loadname="longlat-200m"
+    # loadnum=190000000
+    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
+    #     --loadstype 4 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
+    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # echo "----------------"
+    # sleep 5
+
+    # # Loadname="longtitudes-200m"
+    # loadnum=190000000
+    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
+    #     --loadstype 5 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
+    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # echo "----------------"
+    # sleep 5
+    
+    # Loadname="lognormal-100m"
+    # loadnum=190000000
+    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
+    #     --loadstype 6 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
+    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
+    # echo "----------------"
+    # sleep 5
 }
 
 loadnum=400000000
 opnum=10000000
 scansize=4000000
 dbname="alexol"
-valuesize=8 # if value size == 8, undef varvalue
-# zipfan=0 # if zipfan = 0, is uniform
-# for thread in {1..32}
-# do
-#     Run $dbname $loadnum $opnum $scansize $thread $valuesize
-# done
+valsize=64 # 8 16 32 64 128 256 512 1024
 
-# DBName: combotree fastfair pgm xindex alex
-function recovery() {
+function run_all() {
     dbs="alexol"
     for dbname in $dbs; do
-        for thread in 16
+        for thread in 1 2 4 6 8 12 16 20 28 32
         do
-            Run $dbname $loadnum $opnum $scansize $thread $valuesize
+            Run $dbname $loadnum $opnum $scansize $thread $valsize
         done
     done
 }
 
-recovery $dbname $loadnum $opnum $scansize $thread $valuesize
+run_all $dbname $loadnum $opnum $scansize $thread

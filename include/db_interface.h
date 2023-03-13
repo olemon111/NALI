@@ -8,9 +8,9 @@
 // #include "../third/utree/utree.h"
 // #include "../third/pactree/src/pactree_wrapper.h"
 // #include "../third/lbtree/lbtree-src/lbtree_wrapper.hpp"
-#include "../third/dptree/dptree_wrapper.hpp"
-#include "../third/nap/include/nap_wrapper.h"
-#include "../third/fastfair/con_fastfair.h"
+// #include "../third/dptree/dptree_wrapper.hpp"
+// #include "../third/nap/include/nap_wrapper.h"
+// #include "../third/fastfair/con_fastfair.h"
 #include "tbb/tbb.h"
 #include <utility>
 
@@ -150,10 +150,10 @@ namespace nali {
 
     //         bool insert(const T& key, const P& payload) {
     //             #ifdef VARVALUE
-    //                 char *addr = vs_->put(values[i].second);
-    //                 db_->insert(values[i].first, addr);
+    //                 char *addr = vs_->put(payload);
+    //                 db_->insert(key, addr);
     //             #else
-    //                 db_->insert(values[i].first, (char*)payload);
+    //                 db_->insert(key, (char*)payload);
     //             #endif
     //             return true;
     //         }
@@ -178,10 +178,10 @@ namespace nali {
 
     //         bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
     //             #ifdef VARVALUE
-    //                 char *addr = vs_->put(values[i].second);
-    //                 db_->update(values[i].first, addr);
+    //                 char *addr = vs_->put(payload);
+    //                 db_->update(key, addr);
     //             #else
-    //                 db_->update(values[i].first, (char*)payload);
+    //                 db_->update(key, (char*)payload);
     //             #endif
     //             return true;
     //         }

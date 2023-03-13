@@ -14,9 +14,8 @@
 #include "thread_pool.h"
 #include "../src/nali_kvlog.h"
 
-// 线程池宏
-#define SCAN_USE_THREAD_POOL
-#define PER_THREAD_POOL_THREADS 8
+// #define SCAN_USE_THREAD_POOL
+extern size_t PER_THREAD_POOL_THREADS;
 
 // #define USE_READ_CACHE
 #ifdef USE_READ_CACHE

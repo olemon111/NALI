@@ -20,6 +20,11 @@
 // #define BREAKDOWN
 #define USE_PMDK
 
+// #define STATISTIC_PMEM_INFO
+#ifdef STATISTIC_PMEM_INFO
+extern std::atomic<size_t> pmem_alloc_bytes;
+#endif
+
 #define UTREE_IS_FORWARD(c) (c % 2 == 0)
 
 extern int8_t global_numa_map[64];
@@ -112,6 +117,9 @@ static inline PMEMobjpool** init_numa_pool() {
 }
 
 static inline void *alloc(PMEMobjpool** pop, size_t size) {
+  #ifdef STATISTIC_PMEM_INFO
+  pmem_alloc_bytes += size;
+  #endif
   PMEMoid p;
   pmemobj_alloc(pop[get_numa_id(global_thread_id)], &p, size, 0, NULL, NULL);
   return pmemobj_direct(p);

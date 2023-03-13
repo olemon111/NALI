@@ -18,6 +18,11 @@
 #     cat $1 | grep "dram space use:" | awk '$4>"0.1"{print $4}'
 # }
 
+function get_recovery_time()
+{
+    cat $1 | grep "Recovery" | awk '{print $3}'
+}
+
 function get_multi_put()
 {
     if cat $1 | grep -q "Load" ; then
@@ -38,7 +43,7 @@ function get_multi_get()
 function get_multi_scan()
 {
     if cat $1 | grep -q "Scan" ; then
-        cat $1 | grep "Scan" | grep "iops" | awk '{print $11/1e+06}'
+        cat $1 | grep "Scan" | awk '{print $11/1e+06}'
     else
         echo "0"
     fi
@@ -73,7 +78,7 @@ function get_mix_op()
 
 function get_zipfan_get()
 {
-    if cat $1 | grep -q $2; then
+    if cat $1 | grep -q "zipfan_read"; then
         cat $1 | grep "zipfan_read"| grep -w $2 | awk '{print $7/1e+06}'
     else
         echo "0"
@@ -82,35 +87,41 @@ function get_zipfan_get()
 
 function get_zipfan_update()
 {
-    if cat $1 | grep -q $2 ; then
+    if cat $1 | grep -q "zipfan_update" ; then
         cat $1 | grep "zipfan_update" | grep -w $2 | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
 }
 
-dbname=dptree
-workload=ycsb-200m
+dbname=fastfair
+# workload=ycsb-200m
 # workload=longlat-200m
 # workload=longtitudes-200m
-# workload=lognormal-100m
+workload=lognormal-100m
 
 # logfile="microbench-$dbname-$workload.txt"
 
 for thread in {1..16}
 do
     logfile="multi-$dbname-$workload-th$thread.txt"
-    get_multi_put $logfile
+    # get_multi_put $logfile
     # get_multi_get $logfile
     # get_multi_scan $logfile
     # get_multi_delete $logfile
     # get_multi_update $logfile
 
-    # get_mix_op $logfile "Mix0.05"
-    # get_mix_op $logfile "Mix0.2"
-    # get_mix_op $logfile "Mix0.5"
-    # get_mix_op $logfile "Mix0.8"
-    # get_mix_op $logfile "Mix0.95"
+    # get_mix_op $logfile "Mixupdate0.05"
+    # get_mix_op $logfile "Mixupdate0.2"
+    # get_mix_op $logfile "Mixupdate0.5"
+    # get_mix_op $logfile "Mixupdate0.8"
+    # get_mix_op $logfile "Mixupdate0.95"
+
+    # get_mix_op $logfile "Mixinsert0.05"
+    # get_mix_op $logfile "Mixinsert0.2"
+    # get_mix_op $logfile "Mixinsert0.5"
+    # get_mix_op $logfile "Mixinsert0.8"
+    # get_mix_op $logfile "Mixinsert0.95"
 
     # get_zipfan_update $logfile "zipfan0.99"
     # get_zipfan_update $logfile "zipfan0.9"
@@ -125,4 +136,6 @@ do
     # get_zipfan_get $logfile "zipfan0.7"
     # get_zipfan_get $logfile "zipfan0.6"
     # get_zipfan_get $logfile "zipfan0.5"
+
+    # get_recovery_time $logfile
 done

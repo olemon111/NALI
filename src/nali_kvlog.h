@@ -10,12 +10,16 @@
 #include "xxhash.h"
 #include "rwlock.h"
 
-extern thread_local size_t global_thread_id;
-namespace nali {
-
 // #define USE_PROXY
 // #define VARVALUE
 
+// #define STATISTIC_PMEM_INFO
+#ifdef STATISTIC_PMEM_INFO
+extern std::atomic<size_t> pmem_alloc_bytes;
+#endif
+
+extern thread_local size_t global_thread_id;
+namespace nali {
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
 using OP_VERSION = uint64_t;
 constexpr int OP_BITS = 2;
@@ -230,6 +234,9 @@ class __attribute__((aligned(64))) PPage {
 
     // if space is not enough, need create a new ppage
     char *alloc(last_log_offest &log_info, size_t alloc_size) {
+      #ifdef STATISTIC_PMEM_INFO
+      pmem_alloc_bytes += alloc_size;
+      #endif
       char *ret = nullptr;
       header_.rwlock.WLock();
       if (alloc_size > PPAGE_SIZE - header_.sz_allocated) {

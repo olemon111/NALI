@@ -6,6 +6,11 @@
 #include <unistd.h>
 #include "arch.h"
 
+// #define STATISTIC_PMEM_INFO
+#ifdef STATISTIC_PMEM_INFO
+extern std::atomic<size_t> pmem_alloc_bytes;
+#endif
+
 #define MASK 0x8000FFFFFFFFFFFF
 #define MASK_DIRTY 0xDFFFFFFFFFFFFFFF //DIRTY_BIT
 #define MASK_POOL 0x7FFFFFFFFFFFFFFF
@@ -37,6 +42,9 @@ class PMem {
 			// allocate a size memory from pool_id
 			// and store/persist address to *p
 			// return true on succeed
+			#ifdef STATISTIC_PMEM_INFO
+			pmem_alloc_bytes += size;
+			#endif
 			PMEMobjpool *pop = (PMEMobjpool *)baseAddresses[poolId];            
 			PMEMoid oid;
 			int ret = pmemobj_alloc(pop, &oid, size, 0, NULL, NULL);
@@ -56,6 +64,9 @@ class PMem {
 			// allocate a size memory from pool_id
 			// and store/persist address to *p
 			// return true on succeed
+			#ifdef STATISTIC_PMEM_INFO
+			pmem_alloc_bytes += size;
+			#endif
 			PMEMobjpool *pop = (PMEMobjpool *)baseAddresses[poolId];            
 			int ret = pmemobj_alloc(pop, oid, size, 0, NULL, NULL);
 		#ifdef MEMORY_FOOTPRINT
@@ -70,6 +81,10 @@ class PMem {
 			return true;
 		}
 		static void free(void *pptr) {
+			// TODO(zzy) : alloc -= size
+			// #ifdef STATISTIC_PMEM_INFO
+			// pmem_alloc_bytes += alloc_size;
+			// #endif
 			// p -> pool_id and offset
 			// then perform free
 			int poolId = (((unsigned long)pptr)&MASK_POOL) >> 48;

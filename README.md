@@ -101,9 +101,10 @@ get <key, log_addr> from dram index
 - pactree和dptree有冲突，不要一起make
 
 - TODO
-  - pactree mixupdate, mixinsert
-  - nali var value length test(proxy test)
-  - fastfair 2-32
-  - nap test
-  - nali var value lenght recovery
-  - nvm dram use
+  - pactree mixupdate, mixinsert(注意测试时取消pmem用量统计宏)
+  - nali var value length test(proxy test) ✔
+  - fastfair 2-32 ✔
+  - nap test（按照它论文的数据量）
+  - nali var value length recovery ✔
+  - nali var hash_shards test
+  - nvm dram use ✔

@@ -12,6 +12,11 @@
 #endif
 using namespace std;
 
+// #define STATISTIC_PMEM_INFO
+#ifdef STATISTIC_PMEM_INFO
+extern std::atomic<size_t> pmem_alloc_bytes;
+#endif
+
 unsigned long write_latency_in_ns;
 unsigned long CPU_FREQ_MHZ = 2300;
 unsigned long long cycles_total = 0;
@@ -341,6 +346,9 @@ int nvm_dram_alloc(void **ptr, size_t align, size_t size)
     // TOID(leaf_node) p;
     // POBJ_ZALLOC(pop, &p, leaf_node, size);
     // *ptr = pmemobj_direct(p.oid);
+    #ifdef STATISTIC_PMEM_INFO
+    pmem_alloc_bytes += size;
+    #endif
     PMEMoid p;
     pmemobj_alloc(pop[get_numa_id(global_thread_id)], &p, size, 0, NULL, NULL);
     *ptr = pmemobj_direct(p);
@@ -354,7 +362,11 @@ int nvm_dram_alloc(void **ptr, size_t align, size_t size)
 
 void nvm_dram_free(void *ptr, size_t size)
 {
+
 #ifdef PMEM
+    #ifdef STATISTIC_PMEM_INFO
+    pmem_alloc_bytes -= size;
+    #endif
   TOID(leaf_node) n = pmemobj_oid(ptr);
   POBJ_FREE(&n);
 #else

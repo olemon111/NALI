@@ -19,17 +19,36 @@
 #include "db_interface.h"
 #include "util/sosd_util.h"
 
-// #define STATISTIC_PMEM_INFO 
+// #define STATISTIC_PMEM_INFO
+#ifdef STATISTIC_PMEM_INFO
+std::atomic<size_t> pmem_alloc_bytes(0);
+#endif
+
+// #define NAP_OURS_CMP_TEST
+
 #define PERF_TEST
 #define USE_BULKLOAD
-// #define ZIPFAN_TEST
-#define ONLY_INSERT
-// #define RECOVERY_TEST
-// #define ZIPFAN_UPDATE_TEST
-// #define MIX_UPDATE_TEST
-// #define MIX_INSERT_TEST
-// #define GET_TEST
-// #define UPDATE_TEST
+
+// #define ONLY_INSERT
+
+#ifndef ONLY_INSERT
+  // #define RECOVERY_TEST
+    #ifndef RECOVERY_TEST
+      #define ZIPFAN_TEST
+      #ifdef ZIPFAN_TEST
+      #define ZIPFAN_UPDATE_TEST
+      #endif
+      // #define MIX_UPDATE_TEST
+      #define MIX_INSERT_TEST
+      #define GET_TEST
+      // #define UPDATE_TEST
+      // #define SCAN_TEST
+      // #define DELETE_TEST
+    #endif
+#else
+#define LOAD_PHASE
+#endif
+
 #ifdef STASTISTIC_NALI_CDF
 size_t nali::test_total_keys = 0;
 #endif
@@ -52,17 +71,20 @@ size_t cache_hit_cnt[64];
 #endif
 
 bool start_cache = false;
+size_t PER_THREAD_POOL_THREADS = 0;
 
 std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
 int numa0_thread_num = 16;
 int numa1_thread_num = 16;
-size_t BULKLOAD_SIZE = 0;
+size_t BULKLOAD_SIZE = 10000000;
 size_t LOAD_SIZE   = 200000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 10000000;
 size_t UPDATE_SIZE = 10000000;
 size_t DELETE_SIZE = 10000000;
+size_t ZIPFAN_SIZE = 10000000;
+size_t MIX_SIZE    = 10000000;
 int Loads_type = 3;
 
 #ifdef STATISTIC_PMEM_INFO
@@ -165,6 +187,7 @@ int main(int argc, char *argv[]) {
     {"workload",        required_argument, NULL, 0},
     {"loadstype",       required_argument, NULL, 0},
     {"valuesize",       required_argument, NULL, 0},
+    {"bgthreads",       required_argument, NULL, 0},
     {"help",            no_argument,       NULL, 'h'},
     {NULL, 0, NULL, 0}
   };
@@ -174,6 +197,7 @@ int main(int argc, char *argv[]) {
   std::string  dbName= "alexol";
   std::string  load_file= "";
   int total_thread_num = 16;
+  int recovery_threads_num = 0;
   while ((c = getopt_long(argc, argv, "s:dh", opts, &opt_idx)) != -1) {
     switch (c) {
       case 0:
@@ -186,7 +210,8 @@ int main(int argc, char *argv[]) {
           case 5: load_file = optarg; break;
           case 6: Loads_type = atoi(optarg); break;
           case 7: VALUE_LENGTH = atoi(optarg); break;
-          case 8: show_help(argv[0]); return 0;
+          case 8: PER_THREAD_POOL_THREADS = atoi(optarg); break;
+          case 9: show_help(argv[0]); return 0;
           default: std::cerr << "Parse Argument Error!" << std::endl; abort();
         }
         break;
@@ -204,18 +229,36 @@ int main(int argc, char *argv[]) {
   //     numa0_thread_num = 16;
   //     numa1_thread_num = total_thread_num - numa0_thread_num;
   //   }
-
+  recovery_threads_num = total_thread_num;
   // 测2,4,6->32线程
   if (total_thread_num <= 16) {
     numa0_thread_num = total_thread_num;
     numa1_thread_num = total_thread_num;
     total_thread_num *= 2;
-  } else {
-    return 0;
   }
+
+#ifdef NAP_OURS_CMP_TEST
+  // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
+  if (dbName == "nap") {
+    BULKLOAD_SIZE = 1;
+    LOAD_SIZE = 0;
+    PUT_SIZE = 16000000;
+    ZIPFAN_SIZE = 64000000;
+    MIX_SIZE=0;
+  } else if (dbName == "alexol") {
+    LOAD_SIZE = 0;
+    PUT_SIZE = 6000000;
+    ZIPFAN_SIZE = 64000000;
+    MIX_SIZE=0;
+  }
+#endif
+  // pactree不能测试LGT数据集
+  if (Loads_type == 5 && dbName == "pactree")
+    return 0;
 
   std::cout << "NUMA0 THREAD NUMBER:   " << numa0_thread_num << std::endl;
   std::cout << "NUMA1 THREAD NUMBER:   " << numa1_thread_num << std::endl;
+  std::cout << "BULKLOAD_SIZE:         " << BULKLOAD_SIZE << std::endl;
   std::cout << "LOAD_SIZE:             " << LOAD_SIZE << std::endl;
   std::cout << "PUT_SIZE:              " << PUT_SIZE << std::endl;
   std::cout << "GET_SIZE:              " << GET_SIZE << std::endl;
@@ -223,10 +266,7 @@ int main(int argc, char *argv[]) {
   std::cout << "DB  name:              " << dbName << std::endl;
   std::cout << "Workload:              " << load_file << std::endl;
   std::cout << "valsize:               " << VALUE_LENGTH << std::endl;
-
-  if (Loads_type == 5 && dbName == "pactree") {
-    return 0;
-  }
+  std::cout << "bgthreads:             " << PER_THREAD_POOL_THREADS << std::endl;
 
   std::vector<uint64_t> data_base;
   switch (Loads_type)
@@ -249,9 +289,6 @@ int main(int argc, char *argv[]) {
       break;
   }
 
-  size_t init_dram_space_use = physical_memory_used_by_process();
-  std::cout << "before newdb, dram space use: " << init_dram_space_use / 1024.0 /1024.0  << " GB" << std::endl;
-
   LOG_INFO("@@@@@@@@@@@@ Init @@@@@@@@@@@@");
 
   // generate thread_ids
@@ -273,9 +310,13 @@ int main(int argc, char *argv[]) {
   {
     BULKLOAD_SIZE = 10000000;
     auto values = new std::pair<KEY_TYPE, uint64_t>[BULKLOAD_SIZE];
+    size_t sp = 250000000;
     for (int i = 0; i < BULKLOAD_SIZE; i++) {
-      values[i].first = data_base[i+250000000];
-      values[i].second = data_base[i+250000000];
+      if (Loads_type == 6) {
+        sp = 120000000;
+      }
+      values[i].first = data_base[i+sp];
+      values[i].second = data_base[i+sp];
     }
     std::sort(values, values + BULKLOAD_SIZE, [&](auto const& a, auto const& b) { return a.first < b.first; });
     real_db->bulk_load(values, BULKLOAD_SIZE);
@@ -283,12 +324,15 @@ int main(int argc, char *argv[]) {
   }
   std::cout << "start recovery" << std::endl;
   auto ts = TIME_NOW;
-  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, true, 16);
+  Tree<KEY_TYPE, VALUE_TYPE> *db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db, true, recovery_threads_num);
   auto te = TIME_NOW;
   auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
   std::cout << "[Recovery time]: " << use_seconds << " s" << std::endl;
   return 0;
 #else
+  size_t init_dram_space_use = physical_memory_used_by_process();
+  std::cout << "before newdb, dram space use: " << init_dram_space_use / 1024.0 /1024.0  << " GB" << std::endl;
+
   Tree<KEY_TYPE, VALUE_TYPE> *db = nullptr;
   if  (dbName == "alexol") {
     Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
@@ -324,7 +368,6 @@ int main(int argc, char *argv[]) {
     #ifdef STATISTIC_PMEM_INFO
     pin_start(&nvdimm_counter_begin);
     #endif
-    BULKLOAD_SIZE = 10000000;
     auto values = new std::pair<KEY_TYPE, VALUE_TYPE>[BULKLOAD_SIZE];
     #ifdef VARVALUE
     std::string value(VALUE_LENGTH, '1');
@@ -332,7 +375,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < BULKLOAD_SIZE; i++) {
       values[i].first = data_base[i];
       #ifdef VARVALUE
+      #ifndef PERF_TEST
       memcpy((char *)value.c_str(), &data_base[i], 8);
+      #endif
       values[i].second = value;
       #else
       values[i].second = data_base[i];
@@ -347,7 +392,9 @@ int main(int argc, char *argv[]) {
     LOG_INFO("@@@@ BULK LOAD START @@@@");
     global_thread_id = 0; // thread0 do bulkload
     bindCore(global_thread_id);
+    init_dram_space_use = physical_memory_used_by_process();
     db->bulk_load(values, BULKLOAD_SIZE);
+    std::cout << "after bulkload: dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
     LOG_INFO("@@@@ BULK LOAD END @@@@");
     #ifdef STATISTIC_PMEM_INFO
     pin_end(&nvdimm_counter_end);
@@ -358,6 +405,7 @@ int main(int argc, char *argv[]) {
   }
   #endif
   std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
+#ifdef LOAD_PHASE
   {
     LOG_INFO(" @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@");
 
@@ -387,7 +435,9 @@ int main(int argc, char *argv[]) {
         #endif
         for (size_t j = 0; j < size; ++j) {
           #ifdef VARVALUE
+          #ifndef PERF_TEST
           memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
+          #endif
           bool ret = db->insert(data_base[start_pos+j], value);
           #else
           bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
@@ -416,6 +466,7 @@ int main(int argc, char *argv[]) {
               << "iops " << (double)(LOAD_SIZE)/(double)use_seconds << " ." << std::endl;
     std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
   }
+#endif
 
   #ifdef STASTISTIC_NALI_CDF
   db->get_info();
@@ -447,7 +498,9 @@ int main(int argc, char *argv[]) {
         #endif
         for (size_t j = 0; j < size; ++j) {
           #ifdef VARVALUE
+          #ifndef PERF_TEST
           memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
+          #endif
           auto ret = db->insert(data_base[start_pos+j], value);
           #else
           auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
@@ -478,6 +531,10 @@ int main(int argc, char *argv[]) {
               << "cost " << use_seconds << "s, " 
               << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
   }
+
+#ifdef STATISTIC_PMEM_INFO
+  std::cout << "nvm space use: " << pmem_alloc_bytes * 1.0 / 1024.0 / 1024.0 / 1024.0 << " GB" << std::endl;
+#endif
 
 #ifndef ONLY_INSERT
   #ifdef STATISTIC_CACHE
@@ -522,9 +579,9 @@ int main(int argc, char *argv[]) {
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
               #ifdef VARVALUE
-                memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                 auto ret = db->search(data_base[start_pos+j], value);
                 #ifndef PERF_TEST
+                memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                 if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
                   wrong_get++;
                 }
@@ -600,14 +657,15 @@ int main(int argc, char *argv[]) {
           int wrong_get = 0;
           #ifdef VARVALUE
             std::string value;
-            std::string cmp_value(VALUE_LENGTH, '1');
           #else
             size_t value;
           #endif
           size_t t_v = 0x19990627UL;
           for (size_t j = 0; j < size; ++j) {
             #ifdef VARVALUE
+              #ifndef PERF_TEST
               memcpy((char *)value.c_str(), &t_v, 8);
+              #endif
               auto ret = db->update(data_base[start_pos+j], value);
             #else
               auto ret = db->update(data_base[start_pos+j], t_v);
@@ -643,7 +701,6 @@ int main(int argc, char *argv[]) {
   start_cache = true;
 #ifdef ZIPFAN_TEST
   {
-    size_t total_zipfan_ops = 10000000;
     std::vector<float> zipfan_params = {0.99, 0.9, 0.8, 0.7, 0.6, 0.5};
     bool is_read = true;
 zipfan_test:
@@ -654,38 +711,13 @@ zipfan_test:
       #endif
       std::vector<std::thread> threads;
       std::atomic<uint64_t> thread_idx_count(0);
-      size_t per_thread_size = total_zipfan_ops / total_thread_num;
-
-      // std::vector<int> test_union(total_zipfan_ops);
-      {
-        // std::unordered_map<int, int> dis_cnt;
-        // auto func = [](const std::pair<int, int> &a, const std::pair<int, int> &b){ return a.second < b.second ? true : a.first > b.first; };
-        // std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>, decltype(func)> pq_(func);
-
-        // std::default_random_engine gen;
-        // zipfian_int_distribution<int> dis(300000000, LOAD_SIZE+PUT_SIZE-1, zipfan_params[loop]);
-        // for (uint64_t i = 0; i < total_zipfan_ops; i++) {
-        //   uint32_t pos = dis(gen);
-        //   test_union[i] = pos;
-        //   // dis_cnt[pos]++;
-        // }
-        // std::random_shuffle(test_union.begin(), test_union.end());
-
-        // // for (auto &p : dis_cnt) {
-        // //   pq_.push({p.first, p.second});
-        // // }
-        // // while (!pq_.empty()) {
-        // //   std::cout << pq_.top().first << ": " << pq_.top().second << std::endl;
-        // //   pq_.pop();
-        // // }
-        // // exit(0);
-      }
+      size_t per_thread_size = ZIPFAN_SIZE / total_thread_num;
       Random get_rnd(10000000, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
       size_t pos_arr_size = 4000000;
       std::vector<size_t> pos_arr(pos_arr_size);
       for (int i = 0; i < pos_arr_size; i++)
         pos_arr[i] = get_rnd.Next();
-      size_t *test_union = get_search_keys_zipf_with_theta(pos_arr.data(), pos_arr_size, total_zipfan_ops, zipfan_params[loop]);
+      size_t *test_union = get_search_keys_zipf_with_theta(pos_arr.data(), pos_arr_size, ZIPFAN_SIZE, zipfan_params[loop]);
 
       #ifdef STATISTIC_PMEM_INFO
       pin_start(&nvdimm_counter_begin);
@@ -697,7 +729,7 @@ zipfan_test:
           size_t idx = thread_idx_count.fetch_add(1); 
           global_thread_id = thread_id_arr[idx];
           bindCore(global_thread_id);
-          size_t size = (idx == thread_id_arr.size()-1) ? (total_zipfan_ops-idx*per_thread_size) : per_thread_size;
+          size_t size = (idx == thread_id_arr.size()-1) ? (ZIPFAN_SIZE-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
           int wrong_get = 0;
@@ -713,16 +745,18 @@ zipfan_test:
               bool ret;
               if (!is_read) {
                 #ifdef VARVALUE
+                  #ifndef PERF_TEST
                   memcpy((char *)value.c_str(), &t_v, 8);
+                  #endif
                   ret = db->update(data_base[test_union[start_pos+j]], value);
                 #else
                   ret = db->update(data_base[test_union[start_pos+j]], t_v);
                 #endif
               } else {
                 #ifdef VARVALUE
-                  memcpy((char *)cmp_value.c_str(), &data_base[test_union[start_pos+j]], 8);
                   ret = db->search(data_base[test_union[start_pos+j]], value);
                   #ifndef PERF_TEST
+                  memcpy((char *)cmp_value.c_str(), &data_base[test_union[start_pos+j]], 8);
                   if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
                     wrong_get++;
                   }
@@ -760,15 +794,15 @@ zipfan_test:
       
       auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
       std::string test_type = is_read ? "[zipfan_read]: " : "[zipfan_update]: ";
-      std::cout << test_type << "zipfan" << zipfan_params[loop] << " " << total_zipfan_ops << ": " 
+      std::cout << test_type << "zipfan" << zipfan_params[loop] << " " << ZIPFAN_SIZE << ": " 
                 << "cost " << use_seconds << "s, " 
-                << "iops " << (double)(total_zipfan_ops)/use_seconds << " ." << std::endl;
+                << "iops " << (double)(ZIPFAN_SIZE)/use_seconds << " ." << std::endl;
       // delete [] zipfan_base;
       #ifdef STATISTIC_CACHE
       size_t total_hit = 0;
       for (int i = 0; i < 64; i++)
         total_hit += cache_hit_cnt[i];
-        std::cout << "cache hitness: " << total_hit * 1.0 / total_zipfan_ops << std::endl;
+        std::cout << "cache hitness: " << total_hit * 1.0 / ZIPFAN_SIZE << std::endl;
       #endif
     }
     #ifdef ZIPFAN_UPDATE_TEST
@@ -782,7 +816,7 @@ zipfan_test:
 
 #ifdef MIX_UPDATE_TEST
   {
-    size_t total_mix_ops = 10000000;
+    size_t MIX_SIZE = 10000000;
     std::vector<float> update_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
     float update_ratio = 0;
 
@@ -791,9 +825,9 @@ zipfan_test:
     for (int loop = 0; loop < update_ratios.size(); loop++) {
       // mix update/get
       util::FastRandom ranny(loop+1999);
-      std::vector<double> random_ratio(total_mix_ops);
+      std::vector<double> random_ratio(MIX_SIZE);
       Random get_rnd(0, LOAD_SIZE+PUT_SIZE-1);
-      for (size_t i = 0; i < total_mix_ops; ++i) {
+      for (size_t i = 0; i < MIX_SIZE; ++i) {
         size_t idx = get_rnd.Next();
         std::swap(data_base[i], data_base[idx]);
         random_ratio[i] = ranny.ScaleFactor();
@@ -802,7 +836,7 @@ zipfan_test:
       update_ratio = update_ratios[loop];
       std::vector<std::thread> threads;
       std::atomic<uint64_t> thread_idx_count(0);
-      size_t per_thread_size = total_mix_ops / total_thread_num;
+      size_t per_thread_size = MIX_SIZE / total_thread_num;
       
       #ifdef STATISTIC_PMEM_INFO
       pin_start(&nvdimm_counter_begin);
@@ -814,7 +848,7 @@ zipfan_test:
           size_t idx = thread_idx_count.fetch_add(1); 
           global_thread_id = thread_id_arr[idx];
           bindCore(global_thread_id);
-          size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
+          size_t size = (idx == thread_id_arr.size()-1) ? (MIX_SIZE-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
           int wrong_get = 0;
@@ -830,16 +864,18 @@ zipfan_test:
               bool ret;
               if (random_ratio[start_pos+j] < update_ratio) {
                 #ifdef VARVALUE
+                  #ifndef PERF_TEST
                   memcpy((char *)value.c_str(), &t_v, 8);
+                  #endif
                   ret = db->update(data_base[start_pos+j], value);
                 #else
                   ret = db->update(data_base[start_pos+j], t_v);
                 #endif
               } else {
                 #ifdef VARVALUE
-                  memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                   ret = db->search(data_base[start_pos+j], value);
                   #ifndef PERF_TEST
+                  memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                   if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
                     wrong_get++;
                   }
@@ -876,28 +912,27 @@ zipfan_test:
       #endif
       
       auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-      std::cout << "[Mixupdate]: Mixupdate" << update_ratio << " " << total_mix_ops << ": " 
+      std::cout << "[Mixupdate]: Mixupdate" << update_ratio << " " << MIX_SIZE << ": " 
                 << "cost " << use_seconds << "s, " 
-                << "iops " << (double)(total_mix_ops)/use_seconds << " ." << std::endl;
+                << "iops " << (double)(MIX_SIZE)/use_seconds << " ." << std::endl;
     }
   }
 #endif
 
 #ifdef MIX_INSERT_TEST
   {
-    size_t total_mix_ops = 10000000;
     std::vector<float> insert_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
     size_t cur_insert_loc = BULKLOAD_SIZE+LOAD_SIZE+PUT_SIZE;
     LOG_INFO(" @@@@@@@@@@@@@ mixed insert/get @@@@@@@@@@@@@@@");
     for (int loop = 0; loop < insert_ratios.size(); loop++) {
       std::vector<std::thread> threads;
       std::atomic<uint64_t> thread_idx_count(0);
-      size_t per_thread_size = total_mix_ops / total_thread_num;
+      size_t per_thread_size = MIX_SIZE / total_thread_num;
       util::FastRandom ranny(loop+627);
-      std::vector<std::pair<bool, int>> op_arr(total_mix_ops);
+      std::vector<std::pair<bool, int>> op_arr(MIX_SIZE);
       Random get_rnd(0, BULKLOAD_SIZE+LOAD_SIZE+PUT_SIZE-1);
       int gen_pos = cur_insert_loc;
-      for (size_t i = 0; i < total_mix_ops; ++i) {
+      for (size_t i = 0; i < MIX_SIZE; ++i) {
         float ratio = ranny.ScaleFactor();
         if (ratio < insert_ratios[loop]) {
           op_arr[i] = {true, gen_pos++};
@@ -917,7 +952,7 @@ zipfan_test:
           size_t idx = thread_idx_count.fetch_add(1); 
           global_thread_id = thread_id_arr[idx];
           bindCore(global_thread_id);
-          size_t size = (idx == thread_id_arr.size()-1) ? (total_mix_ops-idx*per_thread_size) : per_thread_size;
+          size_t size = (idx == thread_id_arr.size()-1) ? (MIX_SIZE-idx*per_thread_size) : per_thread_size;
           size_t start_pos = idx * per_thread_size;
               
           int wrong_get = 0;
@@ -931,16 +966,18 @@ zipfan_test:
             bool ret;
             if (op_arr[start_pos+j].first == true) {
               #ifdef VARVALUE
+                #ifndef PERF_TEST
                 memcpy((char *)value.c_str(), &(data_base[op_arr[start_pos+j].second]), 8);
+                #endif
                 ret = db->insert(data_base[op_arr[start_pos+j].second], value);
               #else
                 ret = db->insert(data_base[op_arr[start_pos+j].second], data_base[op_arr[start_pos+j].second]);
               #endif
             } else {
               #ifdef VARVALUE
-                memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                 ret = db->search(data_base[start_pos+j], value);
                 #ifndef PERF_TEST
+                memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
                 if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
                   wrong_get++;
                 }
@@ -976,16 +1013,16 @@ zipfan_test:
       #endif
       
       auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-      std::cout << "[Mixinsert]: Mixinsert" << insert_ratios[loop] << " " << total_mix_ops << ": " 
+      std::cout << "[Mixinsert]: Mixinsert" << insert_ratios[loop] << " " << MIX_SIZE << ": " 
                 << "cost " << use_seconds << "s, " 
-                << "iops " << (double)(total_mix_ops)/use_seconds << " ." << std::endl;
+                << "iops " << (double)(MIX_SIZE)/use_seconds << " ." << std::endl;
     }
   }
 #endif
-  
+#ifdef SCAN_TEST
   {
     // Scan
-    const uint64_t total_scan_ops = 1000000;
+    const uint64_t total_scan_ops = 100000;
     std::vector<int> scan_size = {100};
     
     Random get_rnd(0, BULKLOAD_SIZE+LOAD_SIZE+PUT_SIZE-10000);
@@ -1067,7 +1104,9 @@ zipfan_test:
                 << "iops " << (double)(total_scan_ops)/use_seconds << " ." << std::endl;
     }
   }
+#endif
 
+#ifdef DELETE_TEST
   {
      // Delete
     Random get_rnd(0, BULKLOAD_SIZE+LOAD_SIZE+PUT_SIZE-1);
@@ -1127,6 +1166,7 @@ zipfan_test:
               << "cost " << use_seconds << "s, " 
               << "iops " << (double)(DELETE_SIZE)/use_seconds << " ." << std::endl;
   }
+#endif
   delete db;
 #endif
 #endif
