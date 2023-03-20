@@ -99,7 +99,7 @@ namespace nali {
 
             bool erase(const T& key, uint64_t *log_offset = nullptr) {
                 int num = db_->erase(key, log_offset);
-                if(num) return true; 
+                if(num > 0) return true; 
                 else return false;
             }
 

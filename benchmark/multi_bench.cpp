@@ -26,27 +26,25 @@ std::atomic<size_t> pmem_alloc_bytes(0);
 
 // #define NAP_OURS_CMP_TEST
 
-#define PERF_TEST
+// #define PERF_TEST
 #define USE_BULKLOAD
 
 // #define ONLY_INSERT
-
+#define LOAD_PHASE
 #ifndef ONLY_INSERT
   // #define RECOVERY_TEST
     #ifndef RECOVERY_TEST
-      #define ZIPFAN_TEST
+      // #define ZIPFAN_TEST
       #ifdef ZIPFAN_TEST
       #define ZIPFAN_UPDATE_TEST
       #endif
       // #define MIX_UPDATE_TEST
-      #define MIX_INSERT_TEST
+      // #define MIX_INSERT_TEST
       #define GET_TEST
-      // #define UPDATE_TEST
+      #define UPDATE_TEST
       // #define SCAN_TEST
       // #define DELETE_TEST
     #endif
-#else
-#define LOAD_PHASE
 #endif
 
 #ifdef STASTISTIC_NALI_CDF
@@ -66,13 +64,17 @@ size_t VALUE_LENGTH = 8;
 int8_t global_numa_map[64];
 thread_local size_t global_thread_id = -1;
 
+bool begin_gc = false;
+std::atomic<size_t> gc_complete(0);
+
 #ifdef STATISTIC_CACHE
 size_t cache_hit_cnt[64];
 #endif
 
 bool start_cache = false;
 size_t PER_THREAD_POOL_THREADS = 0;
-
+size_t NALI_VERSION_SHARDS = 64;
+double GC_THRESHOLD = 0.5;
 std::string dataset_path = "/home/zzy/dataset/generate_random_ycsb.dat";
 
 int numa0_thread_num = 16;
@@ -81,8 +83,8 @@ size_t BULKLOAD_SIZE = 10000000;
 size_t LOAD_SIZE   = 200000000;
 size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 10000000;
-size_t UPDATE_SIZE = 10000000;
-size_t DELETE_SIZE = 10000000;
+size_t UPDATE_SIZE = 150000000;
+size_t DELETE_SIZE = 150000000;
 size_t ZIPFAN_SIZE = 10000000;
 size_t MIX_SIZE    = 10000000;
 int Loads_type = 3;
@@ -188,6 +190,7 @@ int main(int argc, char *argv[]) {
     {"loadstype",       required_argument, NULL, 0},
     {"valuesize",       required_argument, NULL, 0},
     {"bgthreads",       required_argument, NULL, 0},
+    {"hashshards",      required_argument, NULL, 0},
     {"help",            no_argument,       NULL, 'h'},
     {NULL, 0, NULL, 0}
   };
@@ -211,7 +214,8 @@ int main(int argc, char *argv[]) {
           case 6: Loads_type = atoi(optarg); break;
           case 7: VALUE_LENGTH = atoi(optarg); break;
           case 8: PER_THREAD_POOL_THREADS = atoi(optarg); break;
-          case 9: show_help(argv[0]); return 0;
+          case 9: NALI_VERSION_SHARDS = atoi(optarg); break;
+          case 10: show_help(argv[0]); return 0;
           default: std::cerr << "Parse Argument Error!" << std::endl; abort();
         }
         break;
@@ -263,9 +267,15 @@ int main(int argc, char *argv[]) {
   std::cout << "PUT_SIZE:              " << PUT_SIZE << std::endl;
   std::cout << "GET_SIZE:              " << GET_SIZE << std::endl;
   std::cout << "UPDATE_SIZE:           " << UPDATE_SIZE << std::endl;
+  std::cout << "DELETE_SIZE:           " << DELETE_SIZE << std::endl;
   std::cout << "DB  name:              " << dbName << std::endl;
   std::cout << "Workload:              " << load_file << std::endl;
+#ifdef VARVALUE
   std::cout << "valsize:               " << VALUE_LENGTH << std::endl;
+#else
+  std::cout << "valsize:               " << 8 << std::endl;
+#endif
+  std::cout << "hash_shards:           " << NALI_VERSION_SHARDS << std::endl;
   std::cout << "bgthreads:             " << PER_THREAD_POOL_THREADS << std::endl;
 
   std::vector<uint64_t> data_base;
@@ -548,7 +558,7 @@ int main(int argc, char *argv[]) {
       size_t idx = get_rnd.Next();
       std::swap(data_base[i], data_base[idx]);
     }
-
+    
     LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
 
     for (int loop = 0; loop < 1; loop++) {
@@ -701,7 +711,7 @@ int main(int argc, char *argv[]) {
   start_cache = true;
 #ifdef ZIPFAN_TEST
   {
-    std::vector<float> zipfan_params = {0.99, 0.9, 0.8, 0.7, 0.6, 0.5};
+    std::vector<float> zipfan_params = {0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
     bool is_read = true;
 zipfan_test:
     LOG_INFO(" @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@");
@@ -1022,7 +1032,7 @@ zipfan_test:
 #ifdef SCAN_TEST
   {
     // Scan
-    const uint64_t total_scan_ops = 100000;
+    const uint64_t total_scan_ops = 1000000;
     std::vector<int> scan_size = {100};
     
     Random get_rnd(0, BULKLOAD_SIZE+LOAD_SIZE+PUT_SIZE-10000);
@@ -1167,6 +1177,152 @@ zipfan_test:
               << "iops " << (double)(DELETE_SIZE)/use_seconds << " ." << std::endl;
   }
 #endif
+  // do_gc
+  begin_gc = true;
+  // while (gc_complete < NALI_GC_THREADS)
+  //   sleep(5);
+  sleep(5);
+#ifdef GET_TEST
+  {
+    // Get
+    Random get_rnd(DELETE_SIZE, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
+    for (size_t i = 0; i < GET_SIZE; ++i) {
+      size_t idx = get_rnd.Next();
+      std::swap(data_base[i], data_base[idx]);
+    }
+    
+    LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
+
+    for (int loop = 0; loop < 1; loop++) {
+      std::vector<std::thread> threads;
+      std::atomic<uint64_t> thread_idx_count(0);
+      size_t per_thread_size = GET_SIZE / total_thread_num;
+      
+      #ifdef STATISTIC_PMEM_INFO
+      pin_start(&nvdimm_counter_begin);
+      #endif
+
+      auto ts = TIME_NOW;
+      for (int i = 0; i < thread_id_arr.size(); ++i) {
+          threads.emplace_back([&](){
+          size_t idx = thread_idx_count.fetch_add(1); 
+          global_thread_id = thread_id_arr[idx];
+          bindCore(global_thread_id);
+          size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
+          size_t start_pos = idx * per_thread_size;
+              
+          int wrong_get = 0;
+          #ifdef VARVALUE
+            std::string value;
+            std::string cmp_value(VALUE_LENGTH, '1');
+          #else
+            size_t value;
+          #endif
+          for (int t = 0; t < 1; t++) {
+            for (size_t j = 0; j < size; ++j) {
+              #ifdef VARVALUE
+                auto ret = db->search(data_base[start_pos+j], value);
+                #ifndef PERF_TEST
+                memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
+                if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
+                  wrong_get++;
+                }
+                #endif
+              #else
+                auto ret = db->search(data_base[start_pos+j], value);
+                #ifndef PERF_TEST
+                if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
+                  wrong_get++;
+                }
+                #endif
+              #endif
+              
+              if(idx == 0 && (j + 1) % 100000 == 0) {
+                std::cerr << "Operate: " << j + 1 << '\r'; 
+              }
+            }
+          }
+          if (wrong_get != 0) {
+            std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+          }
+        });
+      }
+
+      for (auto& t : threads)
+        t.join();
+          
+      auto te = TIME_NOW;
+
+      #ifdef STATISTIC_PMEM_INFO
+      pin_end(&nvdimm_counter_end);
+      print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+      #endif
+      
+      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+      std::cout << "[Get]: Get " << GET_SIZE << ": " 
+                << "cost " << use_seconds << "s, " 
+                << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
+    }
+  }
+#endif
+  // {
+  //   // Put
+  //   LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
+  //   std::vector<std::thread> threads;
+  //   std::atomic<uint64_t> thread_idx_count(0);
+  //   size_t per_thread_size = PUT_SIZE / total_thread_num;
+
+  //   #ifdef STATISTIC_PMEM_INFO
+  //   pin_start(&nvdimm_counter_begin);
+  //   #endif
+    
+  //   auto ts = TIME_NOW;
+
+  //   for(int i = 0; i < thread_id_arr.size(); i++) {
+  //     threads.emplace_back([&](){
+  //       size_t idx = thread_idx_count.fetch_add(1); 
+  //       global_thread_id = thread_id_arr[idx];
+  //       bindCore(global_thread_id);
+  //       size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
+  //       size_t start_pos = idx * per_thread_size + 300000000;
+  //       #ifdef VARVALUE
+  //       std::string value(VALUE_LENGTH, '1');
+  //       #endif
+  //       for (size_t j = 0; j < size; ++j) {
+  //         #ifdef VARVALUE
+  //         #ifndef PERF_TEST
+  //         memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
+  //         #endif
+  //         auto ret = db->insert(data_base[start_pos+j], value);
+  //         #else
+  //         auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+  //         #endif
+  //         // if (ret != 1) {
+  //         //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
+  //         //     assert(0);
+  //         // }
+  //         if(idx == 0 && (j + 1) % 100000 == 0) {
+  //           std::cerr << "Operate: " << j + 1 << '\r'; 
+  //         }
+  //       }
+  //     });
+  //   }
+
+  //   for (auto& t : threads)
+  //     t.join();
+        
+  //   auto te = TIME_NOW;
+
+  //   #ifdef STATISTIC_PMEM_INFO
+  //   pin_end(&nvdimm_counter_end);
+  //   print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+  //   #endif
+
+  //   auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+  //   std::cout << "[Put]: Put " << PUT_SIZE << ": " 
+  //             << "cost " << use_seconds << "s, " 
+  //             << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
+  // }
   delete db;
 #endif
 #endif

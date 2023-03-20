@@ -35,7 +35,7 @@
 #define NALI_LOG_LEVEL_INFO 3
 #define NALI_LOG_LEVEL_DEBUG 4
 
-#define LOG_LEVEL NALI_LOG_LEVEL_OFF
+#define LOG_LEVEL NALI_LOG_LEVEL_INFO
 
 #if LOG_LEVEL >= NALI_LOG_LEVEL_FATAL
 #define LOG_FATAL(format, ...)                                                                        \

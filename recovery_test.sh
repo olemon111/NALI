@@ -11,47 +11,24 @@ function Run() {
     valuesize=$6
 
     Loadname="ycsb-200m"
-    loadnum=190000000
-    date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}.txt
+    loadnum=30000000
+    date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
+    # gdb --args \
+    # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
+    # numactl --cpunodebind=1 --membind=1 \
+    # LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes \
     timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-        --thread-nums $thread --bgthreads $bgthreads | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}.txt
+        --thread-nums $thread --bgthreads $bgthreads --hashshards $hashshards | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
     echo "----------------"
     sleep 5
-
-    # # Loadname="longlat-200m"
-    # loadnum=190000000
-    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
-    #     --loadstype 4 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # echo "----------------"
-    # sleep 5
-
-    # # Loadname="longtitudes-200m"
-    # loadnum=190000000
-    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
-    #     --loadstype 5 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # echo "----------------"
-    # sleep 5
-    
-    # Loadname="lognormal-100m"
-    # loadnum=190000000
-    # date | tee recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
-    #     --loadstype 6 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-    #     --thread-nums $thread | tee -a recovery-${dbname}-${Loadname}-th${thread}-s${valuesize}.txt
-    # echo "----------------"
-    # sleep 5
 }
 
 loadnum=400000000
 opnum=10000000
 scansize=4000000
 dbname="alexol"
-valsize=64 # 8 16 32 64 128 256 512 1024
+valsize=8 # 8 16 32 64 128 256 512 1024
 
 function run_all() {
     dbs="alexol"

@@ -22,7 +22,7 @@ extern thread_local size_t global_thread_id; // each index use it for pmem alloc
 
 namespace nali {
 
-const size_t PPAGE_SIZE = 64UL * 1024UL * 1024UL; // 64MB
+const size_t PPAGE_SIZE = 8UL * 1024UL * 1024UL;
     
 const int numa_max_node = 8; 
 

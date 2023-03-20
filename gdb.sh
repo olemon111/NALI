@@ -1,5 +1,5 @@
-# sudo rm -rf /mnt/pmem0/zzy/*
-# sudo rm -rf /mnt/pmem1/zzy/*
+sudo rm -rf /mnt/pmem0/zzy/*
+sudo rm -rf /mnt/pmem1/zzy/*
 
 #!/usr/bin/env bash
 

@@ -2520,7 +2520,7 @@ public:
     }
     pos--;
     while (pos >= 0 && key_equal(ALEX_DATA_NODE_KEY_AT(pos), key)) {
-      *log_offset = ALEX_DATA_NODE_PAYLOAD_AT(pos);
+      // *log_offset = ALEX_DATA_NODE_PAYLOAD_AT(pos);
       ALEX_DATA_NODE_KEY_AT(pos) = next_key;
       num_erased += check_exists(pos);
       unset_bit(pos);

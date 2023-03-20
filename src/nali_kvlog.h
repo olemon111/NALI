@@ -19,7 +19,12 @@ extern std::atomic<size_t> pmem_alloc_bytes;
 #endif
 
 extern thread_local size_t global_thread_id;
+extern size_t NALI_VERSION_SHARDS;
+extern double GC_THRESHOLD;
+extern bool begin_gc;
+extern std::atomic<size_t> gc_complete;
 namespace nali {
+
 enum OP_t { INSERT, DELETE, UPDATE, TRASH }; // TRASH is for gc
 using OP_VERSION = uint64_t;
 constexpr int OP_BITS = 2;
@@ -61,6 +66,7 @@ class Pair_t {
   Pair_t(const KEY &k, const VALUE &v) {
     _key = k;
     _value = v;
+    u_offset = UINT64_MAX;
   }
   Pair_t(const KEY &k) {
     _key = k;
@@ -192,17 +198,21 @@ public:
  * | op | version | key | vlen | value| last_log_offset| 
 */
 
-#define NALI_VERSION_SHARDS 256
+// #define NALI_VERSION_SHARDS 256
 
-#define MAX_LOF_FILE_ID 256
+#define MAX_LOF_FILE_ID 32
 // need a table to store all old logfile's start offset
 //  need query the table to get real offset
 struct global_ppage_meta {
-  char *start_addr_arr_[numa_node_num][NALI_VERSION_SHARDS][MAX_LOF_FILE_ID]; // numa_id + hash_id + page_id -> mmap_addr
+  char *start_addr_arr_[numa_node_num][256][MAX_LOF_FILE_ID]; // numa_id + hash_id + page_id -> mmap_addr
+  size_t sz_freed[numa_node_num][256][MAX_LOF_FILE_ID]; // 每个page的free的空间
   void *operator new(size_t size) {
     return aligned_alloc(64, size);
   }
-  global_ppage_meta() { memset(start_addr_arr_, 0, sizeof(start_addr_arr_)); }
+  global_ppage_meta() { 
+    memset(start_addr_arr_, 0, sizeof(start_addr_arr_));
+    memset(sz_freed, 0, sizeof(sz_freed));
+  }
 };
 global_ppage_meta *g_ppage_s_addr_arr_;
 
@@ -520,10 +530,126 @@ public:
         t.join();
     }
 
+    // 目前只支持定长32B log
+    void background_gc(Tree<T, P> *db_, size_t gc_threads_num) {
+      std::vector<std::thread> gc_threads;
+      std::atomic_int thread_idx_count(0);
+      int perthread_hash_nums = NALI_VERSION_SHARDS / gc_threads_num;
+      for (int thread_cnt = 0; thread_cnt < gc_threads_num; thread_cnt++) {
+        gc_threads.emplace_back([&](){
+          global_thread_id = thread_idx_count.fetch_add(1);
+          int begin_hashid = global_thread_id * perthread_hash_nums;
+          int end_hashid = (global_thread_id == gc_threads_num-1) ? NALI_VERSION_SHARDS : (begin_hashid + perthread_hash_nums);
+          do_gc(db_, begin_hashid, end_hashid);
+        });
+      }
+      for (auto& t : gc_threads)
+        t.detach();
+    }
+
+    void do_gc(Tree<T, P> *db_, int begin_pos, int end_pos) {
+      while (!begin_gc)
+        sleep(1);
+      global_thread_id = global_thread_id < 16 ? global_thread_id : global_thread_id + 16;
+      std::cout << "thread_id: " << global_thread_id << " begin_hashid: " << begin_pos << " end_hashid: " << end_pos << std::endl << std::flush;
+      size_t log_size = 32; // TODO: var value
+      while (true)
+      {
+        // 1. wait until can do gc
+        // 2. 获取当前最新日志文件号l，从日志号l-1文件开始回收
+          // 对于put/update log，回到dram index get(key, &value)判断log是否valid
+            // 如果valid，则把其后边的日志全部置为无效，再次执行一次该log后删除该log
+            // 如果invalid，则回溯删除所有old log和本log
+          // 对于delete log，回溯删除掉所有old log和本log
+        for (int file_id = MAX_LOF_FILE_ID; file_id >= 0; file_id--) {
+          for (int hash_id = begin_pos; hash_id < end_pos; hash_id++) {
+            for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+              size_t core_id = numa_id == 0 ? global_thread_id : global_thread_id + 16 * numa_id;
+              bindCore(core_id);
+              // ppage_[numa_id][hash_id]->header_.rwlock.RLock();
+              int newest_page_id = ppage_[numa_id][hash_id]->header_.ppage_id;
+              // ppage_[numa_id][hash_id]->header_.rwlock.RUnlock();
+              if (newest_page_id <= file_id)
+                continue;
+              char *start_addr = get_page_start_addr(numa_id, hash_id, file_id);
+              if (start_addr == nullptr)
+                continue;
+                // start_addr = get_page_start_addr(numa_id, hash_id, file_id);
+              for (size_t offset = 0; offset < PPAGE_SIZE; offset += log_size) { 
+                Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+offset);
+                OP_t log_op_ = log_->get_op();
+                if (
+                  // log_op_ == OP_t::INSERT || 
+                  log_op_ == OP_t::UPDATE || log_op_ == OP_t::DELETE) {
+                  std::vector<std::pair<uint64_t, Pair_t<T, P>*>> old_log; // offfset+addr pair
+                  const T kkk = log_->key();
+                  uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
+                  last_log_offest log_info(8, numa_id, file_id, offset);
+                  if (log_op_ == OP_t::DELETE) {
+                    old_log.push_back({log_info.to_uint64_t_offset(), log_});
+                  }
+                  // else {
+                  //   char *dram_vlog_addr = db_->get_value_log_addr(log_->key());
+                  //   if (dram_vlog_addr != (char *)log_) {
+                  //     old_log.push_back({log_info.to_uint64_t_offset(), log_});
+                  //   }
+                  // }
+                  
+                  uint64_t next_old_log = log_->u_offset;
+                  while (next_old_log != UINT64_MAX) { // 最old的日志，next log地址为全1
+                    last_log_offest log_info(next_old_log);
+                    // if (log_info.vlen_ != 8) // bug
+                    //   break;
+                    log_ = (nali::Pair_t<T, P> *)get_addr(log_info, key_hash);
+                    if (log_->op == OP_t::TRASH)
+                      break;
+                    old_log.push_back({next_old_log, log_});
+                    next_old_log = log_->next_old_log();
+                  }
+                  // set invalid
+                  for (int p = old_log.size() - 1; p >= 0; p--) {
+                    last_log_offest li(old_log[p].first);
+                    log_ = old_log[p].second;
+                    log_->op = OP_t::TRASH;
+                    g_ppage_s_addr_arr_->sz_freed[li.numa_id_][key_hash % NALI_VERSION_SHARDS][li.ppage_id_] += 32;
+                  }
+                } else if (log_op_ == OP_t::TRASH) {
+                  continue;
+                } else {
+                  // std::cout << "gc_thread: invalid log op" << std::endl;
+                }
+              }
+
+              // check whether at threshold
+              if (g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] * 1.0 / PPAGE_SIZE >= GC_THRESHOLD) {
+                // scan log and collect valid log
+                for (size_t offest = 0; offest < PPAGE_SIZE; offest += log_size) { 
+                  Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+offest);
+                  OP_t log_op_ = log_->get_op();
+                  if (log_op_ == OP_t::INSERT || log_op_ == OP_t::UPDATE) {
+                    db_->update(log_->_key, log_->_value);
+                  }
+                }
+                // delete logfile and set global_start_addr = nullptr
+                // XXX: 这里加上会崩
+                // g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][file_id] = nullptr;
+                // g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] = 0;
+                #ifdef STATISTIC_PMEM_INFO
+                  pmem_alloc_bytes -= PPAGE_SIZE;
+                #endif
+              }
+            }
+          }
+        }
+        sleep(3);
+      }
+      // gc_complete++;
+    }
+
     // 返回log相对地址
     uint64_t insert(const T& key, const P& payload, uint64_t hash_key) {
       Pair_t<T, P> p(key, payload);
-      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(INSERT);
       last_log_offest log_info;
       log_info.vlen_ = p.vlen();
@@ -534,7 +660,7 @@ public:
 
     void erase(const T& key, uint64_t hash_key, uint64_t old_log_offset) {
       Pair_t<T, P> p(key);
-      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(DELETE);
       p.set_last_log_offest(old_log_offset);
       last_log_offest log_info;
@@ -544,7 +670,7 @@ public:
     }
 
     char* update_step1(const T& key, const P& payload, uint64_t hash_key, Pair_t<T, P> &p, uint64_t &cur_log_addr) {
-      // p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
+      p.set_version(version_allocator_[hash_key % NALI_VERSION_SHARDS].get_version());
       p.set_op(UPDATE);
       last_log_offest log_info;
       log_info.vlen_ = p.vlen();
@@ -578,8 +704,8 @@ public:
     }
 
   private:
-    PPage *ppage_[numa_node_num][NALI_VERSION_SHARDS] = {0};
-    version_alloctor version_allocator_[NALI_VERSION_SHARDS];
+    PPage *ppage_[numa_node_num][256] = {0};
+    version_alloctor version_allocator_[256];
 };
 
 }  // namespace nali
