@@ -13,8 +13,8 @@
 // #define USE_PROXY
 // #define VARVALUE
 
-// #define STATISTIC_PMEM_INFO
-#ifdef STATISTIC_PMEM_INFO
+// #define STATISTIC_PMEM_USE
+#ifdef STATISTIC_PMEM_USE
 extern std::atomic<size_t> pmem_alloc_bytes;
 #endif
 
@@ -50,6 +50,19 @@ struct last_log_offest {
 };
 
 #pragma pack(1) //使范围内结构体按1字节方式对齐
+
+#define ALIGN(addr, alignment) ((char *)((unsigned long)(addr) & ~((alignment) - 1)))
+#define CACHELINE_ALIGN(addr) ALIGN(addr, 64)
+
+static inline void clflush(volatile void *p)
+{
+    volatile char *ptr = CACHELINE_ALIGN(p);
+#ifdef COUNT_CLFLUSH
+    clflush_count.fetch_add(1);
+#endif
+    asm volatile("clwb (%0)" ::"r"(ptr));
+}
+
 template <typename KEY, typename VALUE>
 class Pair_t {
  public:
@@ -84,8 +97,9 @@ class Pair_t {
   void store_persist(void *addr) {
     auto p = reinterpret_cast<void *>(this);
     auto len = size();
-    memcpy(addr, p, len);
-    pmem_persist(addr, len);
+    // memcpy(addr, p, len);
+    // pmem_persist(addr, len);
+    pmem_memcpy_persist(addr, p, len);
   }
   constexpr size_t value_offset() { return sizeof(OP_VERSION) + sizeof(KEY); }
   void set_version(uint64_t old_version) { version = old_version + 1; }
@@ -244,7 +258,8 @@ class __attribute__((aligned(64))) PPage {
 
     // if space is not enough, need create a new ppage
     char *alloc(last_log_offest &log_info, size_t alloc_size) {
-      #ifdef STATISTIC_PMEM_INFO
+      // alloc_size = 64;
+      #ifdef STATISTIC_PMEM_USE
       pmem_alloc_bytes += alloc_size;
       #endif
       char *ret = nullptr;
@@ -261,6 +276,8 @@ class __attribute__((aligned(64))) PPage {
       log_info.log_offset_ = header_.sz_allocated;
       ret = start_addr_ + header_.sz_allocated;
       header_.sz_allocated += alloc_size;
+      // pmem_memcpy_persist(start_addr_, &header_.sz_allocated, 8);
+
       // if (alloc_size == 32) {
       //   if (unlikely(header_.sz_allocated == PPAGE_SIZE - 64)) {
       //     header_.sz_allocated = 32;
@@ -548,12 +565,13 @@ public:
     }
 
     void do_gc(Tree<T, P> *db_, int begin_pos, int end_pos) {
-      while (!begin_gc)
-        sleep(1);
       global_thread_id = global_thread_id < 16 ? global_thread_id : global_thread_id + 16;
       std::cout << "thread_id: " << global_thread_id << " begin_hashid: " << begin_pos << " end_hashid: " << end_pos << std::endl << std::flush;
+      while (!begin_gc)
+        sleep(1);
       size_t log_size = 32; // TODO: var value
-      while (true)
+      // while (true)
+      bool f = false;
       {
         // 1. wait until can do gc
         // 2. 获取当前最新日志文件号l，从日志号l-1文件开始回收
@@ -561,11 +579,12 @@ public:
             // 如果valid，则把其后边的日志全部置为无效，再次执行一次该log后删除该log
             // 如果invalid，则回溯删除所有old log和本log
           // 对于delete log，回溯删除掉所有old log和本log
+        std::vector<std::pair<uint64_t, Pair_t<T, P>*>> old_log; // offfset+addr pair
         for (int file_id = MAX_LOF_FILE_ID; file_id >= 0; file_id--) {
-          for (int hash_id = begin_pos; hash_id < end_pos; hash_id++) {
-            for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
-              size_t core_id = numa_id == 0 ? global_thread_id : global_thread_id + 16 * numa_id;
-              bindCore(core_id);
+          for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+            size_t core_id = numa_id == 0 ? global_thread_id : global_thread_id + 16 * numa_id;
+            bindCore(core_id+32); // must bind core
+            for (int hash_id = begin_pos; hash_id < end_pos; hash_id++) {
               // ppage_[numa_id][hash_id]->header_.rwlock.RLock();
               int newest_page_id = ppage_[numa_id][hash_id]->header_.ppage_id;
               // ppage_[numa_id][hash_id]->header_.rwlock.RUnlock();
@@ -574,14 +593,17 @@ public:
               char *start_addr = get_page_start_addr(numa_id, hash_id, file_id);
               if (start_addr == nullptr)
                 continue;
-                // start_addr = get_page_start_addr(numa_id, hash_id, file_id);
-              for (size_t offset = 0; offset < PPAGE_SIZE; offset += log_size) { 
+              // if (f == false) {
+              //   f= true;
+              //   std::cout << "true gc" << std::endl;
+              // }
+              for (size_t offset = 0; offset < PPAGE_SIZE; offset += log_size) {
+                old_log.clear();
                 Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+offset);
                 OP_t log_op_ = log_->get_op();
                 if (
                   // log_op_ == OP_t::INSERT || 
                   log_op_ == OP_t::UPDATE || log_op_ == OP_t::DELETE) {
-                  std::vector<std::pair<uint64_t, Pair_t<T, P>*>> old_log; // offfset+addr pair
                   const T kkk = log_->key();
                   uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
                   last_log_offest log_info(8, numa_id, file_id, offset);
@@ -620,6 +642,43 @@ public:
                 }
               }
 
+              // // check whether at threshold
+              // if (g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] * 1.0 / PPAGE_SIZE >= GC_THRESHOLD) {
+              //   // scan log and collect valid log
+              //   for (size_t offest = 0; offest < PPAGE_SIZE; offest += log_size) { 
+              //     Pair_t<T, P> *log_ = (Pair_t<T, P> *)(start_addr+offest);
+              //     OP_t log_op_ = log_->get_op();
+              //     if (log_op_ == OP_t::INSERT || log_op_ == OP_t::UPDATE) {
+              //       db_->update(log_->_key, log_->_value);
+              //     }
+              //   }
+              //   // delete logfile and set global_start_addr = nullptr
+              //   // XXX: 这里加上会崩
+              //   // g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][file_id] = nullptr;
+              //   g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] = 0;
+              //   #ifdef STATISTIC_PMEM_USE
+              //     pmem_alloc_bytes -= PPAGE_SIZE;
+              //   #endif
+              // }
+            }
+          }
+        }
+        // sleep(2);
+      }
+
+      {
+        for (int file_id = MAX_LOF_FILE_ID; file_id >= 0; file_id--) {
+          for (int numa_id = 0; numa_id < numa_node_num; numa_id++) {
+            size_t core_id = numa_id == 0 ? global_thread_id : global_thread_id + 16 * numa_id;
+            bindCore(core_id+32); // must bind core
+            for (int hash_id = begin_pos; hash_id < end_pos; hash_id++) {
+              int newest_page_id = ppage_[numa_id][hash_id]->header_.ppage_id;
+              // ppage_[numa_id][hash_id]->header_.rwlock.RUnlock();
+              if (newest_page_id <= file_id)
+                continue;
+              char *start_addr = get_page_start_addr(numa_id, hash_id, file_id);
+              if (start_addr == nullptr)
+                continue;
               // check whether at threshold
               if (g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] * 1.0 / PPAGE_SIZE >= GC_THRESHOLD) {
                 // scan log and collect valid log
@@ -633,17 +692,17 @@ public:
                 // delete logfile and set global_start_addr = nullptr
                 // XXX: 这里加上会崩
                 // g_ppage_s_addr_arr_->start_addr_arr_[numa_id][hash_id][file_id] = nullptr;
-                // g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] = 0;
-                #ifdef STATISTIC_PMEM_INFO
+                g_ppage_s_addr_arr_->sz_freed[numa_id][hash_id][file_id] = 0;
+                #ifdef STATISTIC_PMEM_USE
                   pmem_alloc_bytes -= PPAGE_SIZE;
                 #endif
               }
             }
           }
         }
-        sleep(3);
       }
-      // gc_complete++;
+
+      gc_complete++;
     }
 
     // 返回log相对地址

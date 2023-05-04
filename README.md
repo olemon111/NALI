@@ -108,3 +108,4 @@ get <key, log_addr> from dram index
   - nali var value length recovery ✔
   - nali var hash_shards test
   - nvm dram use ✔
+  - gc(gc必须是128shrads以下，不然没有回收效果) ✔

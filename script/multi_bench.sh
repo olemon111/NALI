@@ -79,7 +79,7 @@ dbname="alexol"
 bgthreads=0
 valsize=8
 
-hashshards=256
+hashshards=128
 
 # alexol var value
 # function run_all() {
@@ -103,7 +103,7 @@ hashshards=256
 function run_all() {
     dbs="alexol"
     for dbname in $dbs; do
-        for hashshards in 64 #16 32 64 128 256
+        for bgthreads in 2 # 4 8 16
         do
             for thread in 16 # {1..16}
             do

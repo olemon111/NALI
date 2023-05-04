@@ -350,7 +350,7 @@ int nvm_dram_alloc(void **ptr, size_t align, size_t size)
     pmem_alloc_bytes += size;
     #endif
     PMEMoid p;
-    pmemobj_alloc(pop[get_numa_id(global_thread_id)], &p, size, 0, NULL, NULL);
+    pmemobj_alloc(pop[rand()%2], &p, size, 0, NULL, NULL);
     *ptr = pmemobj_direct(p);
     return 0;
 #else

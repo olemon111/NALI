@@ -18,6 +18,11 @@
 #     cat $1 | grep "dram space use:" | awk '$4>"0.1"{print $4}'
 # }
 
+function get_gc()
+{
+    cat $1 | grep "gc_gc_gc" | awk '{print $5}'
+}
+
 function get_recovery_time()
 {
     cat $1 | grep "Recovery" | awk '{print $3}'
@@ -26,7 +31,7 @@ function get_recovery_time()
 function get_multi_put()
 {
     if cat $1 | grep -q "Load" ; then
-        cat $1 | grep "Load" | awk '{print $7/1.15/1e+06}'
+        cat $1 | grep "Load" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -34,7 +39,7 @@ function get_multi_put()
 function get_multi_get()
 {
     if cat $1 | grep -q "Get" ; then
-        cat $1 | grep "Get" | awk '{print $7/1.3/1e+06}'
+        cat $1 | grep "Get" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -101,13 +106,11 @@ workload=ycsb-200m
 # workload=lognormal-100m
 
 # logfile="microbench-$dbname-$workload.txt"
-
-hashshards=32
-
-for thread in {1..16}
+bgthread=2
+for thread in 16
 do
-    logfile="multi-$dbname-$workload-th$thread-s8-b0-h$hashshards.txt"
-    get_multi_put $logfile
+    logfile="multi-$dbname-$workload-th$thread-s8-b$bgthread-h64.txt"
+    # get_multi_put $logfile
     # get_multi_get $logfile
     # get_multi_scan $logfile
     # get_multi_delete $logfile
@@ -140,4 +143,5 @@ do
     # get_zipfan_get $logfile "zipfan0.5"
 
     # get_recovery_time $logfile
+    get_gc $logfile
 done

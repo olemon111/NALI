@@ -18,6 +18,24 @@
 #     cat $1 | grep "dram space use:" | awk '$4>"0.1"{print $4}'
 # }
 
+function get_numa0_read()
+{
+    if cat $1 | grep -q "pmem0, bytes_read:" ; then
+        cat $1 | grep "pmem0, bytes_read:" | awk '{print strtonum("0x"$3)/1e7}'
+    else
+        echo "0"
+    fi
+}
+
+function get_numa0_write()
+{
+    if cat $1 | grep -q "pmem0, bytes_written:" ; then
+        cat $1 | grep "pmem0, bytes_written:" | awk '{print strtonum("0x"$3)/1e7}'
+    else
+        echo "0"
+    fi
+}
+
 function get_recovery_time()
 {
     cat $1 | grep "Recovery" | awk '{print $3}'
@@ -25,8 +43,8 @@ function get_recovery_time()
 
 function get_multi_put()
 {
-    if cat $1 | grep -q "Load" ; then
-        cat $1 | grep "Load" | awk '{print $7/1e+06}'
+    if cat $1 | grep -q "Put" ; then
+        cat $1 | grep "Put" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -94,17 +112,19 @@ function get_zipfan_update()
     fi
 }
 
-dbname=fastfair
-# workload=ycsb-200m
+dbname=dptree
+workload=ycsb-200m
 # workload=longlat-200m
 # workload=longtitudes-200m
-workload=lognormal-100m
+# workload=lognormal-100m
 
 # logfile="microbench-$dbname-$workload.txt"
 
-for thread in {1..16}
+for thread in 1 4 8 12 16 17 20 24 28 32
 do
-    logfile="multi-$dbname-$workload-th$thread.txt"
+    logfile="multi-$dbname-$workload-th$thread-s8-b2-h128.txt"
+    # get_numa0_read $logfile
+    get_numa0_write $logfile
     # get_multi_put $logfile
     # get_multi_get $logfile
     # get_multi_scan $logfile

@@ -1,6 +1,7 @@
 /build
 /script/*.txt
 /script/*/*.txt
+/script/**/*.txt
 /background_test/mlc_test/*.txt
 /background_test/mlc_test/origin_test/*.txt
 *.data

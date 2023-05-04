@@ -17,20 +17,9 @@
 // #define SCAN_USE_THREAD_POOL
 extern size_t PER_THREAD_POOL_THREADS;
 
-// #define USE_READ_CACHE
-#ifdef USE_READ_CACHE
-#define SAMPLE_INTERVAL 10
-#define STATISTIC_CACHE
-extern bool start_cache;
-#endif
-#ifdef STATISTIC_CACHE
-extern size_t cache_hit_cnt[64];
-#endif
-
 extern size_t VALUE_LENGTH;
 extern thread_local size_t global_thread_id;
 thread_local size_t get_cnt = 0;
-#define NALI_GC_THREADS 8
 namespace nali {
 
 template<typename key_t, typename value_t>
@@ -162,7 +151,7 @@ private:
 
             // TODO: 多个NUMA平分keys
             void bulk_load(const V values[], int num_keys) {
-                log_kv_->background_gc(this, NALI_GC_THREADS);
+                // log_kv_->background_gc(this, PER_THREAD_POOL_THREADS);
                 std::pair<T, uint64_t> *dram_kvs = new std::pair<T, uint64_t>[num_keys];
                 for (int i = 0; i < num_keys; i++) {
                     const T kkk = values[i].first;
@@ -198,16 +187,6 @@ private:
             }
 
             bool search(const T& key, P &payload) {
-                #ifdef USE_READ_CACHE
-                if (start_cache) {
-                    auto iter = cache_[global_thread_id].find(key);
-                    if (iter != cache_[global_thread_id].end()) {
-                        payload = iter->second;
-                        cache_hit_cnt[global_thread_id]++;
-                        return true;
-                    }
-                }
-                #endif
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
 
@@ -222,13 +201,6 @@ private:
                     payload.assign(((char*)pmem_addr) + 26, log_info.vlen_);
                 #else
                     memcpy(&payload, (char*)pmem_addr + 16, 8);
-                #endif
-
-                #ifdef USE_READ_CACHE
-                if (start_cache) {
-                    if (get_cnt++ % SAMPLE_INTERVAL == 0)
-                        cache_[global_thread_id][key] = payload;
-                }
                 #endif
 
                 return ret;
@@ -359,9 +331,6 @@ private:
             nali::LogKV<T, P> *log_kv_;
             #ifdef SCAN_USE_THREAD_POOL
             ThreadPool *thread_pool_[numa_node_num];
-            #endif
-            #ifdef USE_READ_CACHE
-            std::unordered_map<size_t, size_t> cache_[64];
             #endif
     };
 }
