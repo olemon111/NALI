@@ -19,8 +19,12 @@ struct alignas(kCachelineSize) ThreadMeta {
   uint64_t op_seq;
   uint64_t hit_in_cap;
   bool is_in_nap;
-
-  ThreadMeta() : epoch(0), op_seq(0), hit_in_cap(0), is_in_nap(false) {}
+  uint64_t ff_numa_read[2];
+  uint64_t ff_numa_write[2];
+  ThreadMeta() : epoch(0), op_seq(0), hit_in_cap(0), is_in_nap(false) {
+    memset(ff_numa_read, 0, sizeof(ff_numa_read));
+    memset(ff_numa_write, 0, sizeof(ff_numa_write));
+  }
 };
 
 extern pmem::obj::pool_base pop_numa[kMaxNumaCnt];

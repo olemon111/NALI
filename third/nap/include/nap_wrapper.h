@@ -32,19 +32,27 @@ thread_local uint64_t cur_value = 1;
 thread_local uint8_t thread_local_buffer[4096];
 extern char nap_max_str[15];
 
+// extern nap::ThreadMeta thread_meta_array[nap::kMaxThreadCnt];
+extern bool zipfan_numa_test_flag;
+
 struct FastFairTreeIndex {
   fastfair::btree *map;
 
   FastFairTreeIndex(fastfair::btree *map) : map(map) {}
 
   void put(const nap::Slice &key, const nap::Slice &value, bool is_update) {
-    map->btree_insert((char *)key.data(), (char *)(cur_value++));
+    int8_t numa_id = map->btree_insert((char *)key.data(), (char *)(cur_value++));
+    if (zipfan_numa_test_flag) {
+      nap::thread_meta_array[global_thread_id].ff_numa_write[numa_id]++;
+    }
   }
 
   bool get(const nap::Slice &key, std::string &value) {
-    uint64_t *ret =
-        reinterpret_cast<uint64_t *>(map->btree_search((char *)key.data()));
-    return ret != nullptr;
+    int8_t numa_id = map->btree_search((char *)key.data());
+    if (zipfan_numa_test_flag) {
+      nap::thread_meta_array[global_thread_id].ff_numa_read[numa_id]++;
+    }
+    return true;
   }
 
   void del(const nap::Slice &key) {}
@@ -61,6 +69,7 @@ public:
     virtual bool update(size_t key, size_t value);
     virtual bool remove(size_t key);
     virtual int scan(size_t key, uint32_t to_scan, std::pair<size_t, size_t>*& values_out);
+    virtual void print_numa_info(bool is_read);
 private:
     fastfair::btree *ff = nullptr;
     nap::Nap<FastFairTreeIndex> *tree_ = nullptr;
@@ -84,7 +93,7 @@ nap_fastfair_wrapper::nap_fastfair_wrapper() {
     uint64_t key = 1000000+i;
     raw_index->put(nap::Slice((char *)(&key), KEY_LEN), nap::Slice((char *)(&key), VALUE_LEN), false);
   }
-  std::cout << "nap warm up" << std::endl;
+  std::cout << "nap warm up..." << std::endl;
   tree_ = new nap::Nap<FastFairTreeIndex>(raw_index);
   // nap测试中，首先进行了一段的warmup:执行get操作
   for (int i = 0; i < 100000; i++) {
@@ -92,8 +101,10 @@ nap_fastfair_wrapper::nap_fastfair_wrapper() {
     uint64_t key = random();
     tree_->get(nap::Slice((char *)(&key), KEY_LEN), str);
   }
+  std::cout << "nap warm up end" << std::endl;
   // nap::Topology::reset();
   tree_->set_sampling_interval(32); // nap默认设置32
+  tree_->set_switch_interval(5);
   tree_->clear(); // 统计信息
   std::cout << "nap init end" << std::endl;
 }
@@ -131,4 +142,23 @@ int nap_fastfair_wrapper::scan(size_t key, uint32_t to_scan, std::pair<size_t, s
   int off = 0;
   ff->btree_search_range(key, UINT64_MAX, (unsigned long *)thread_local_buffer, to_scan, off);
   return 0;
+}
+
+void nap_fastfair_wrapper::print_numa_info(bool is_read) {
+  uint64_t local_visit = 0, remote_visit = 0;
+  for (int i = 0; i < nap::kMaxThreadCnt; i++) {
+    int8_t thread_numa_id = numa_map[i];
+    if (is_read) {
+      local_visit += nap::thread_meta_array[i].ff_numa_read[thread_numa_id];
+      remote_visit += nap::thread_meta_array[i].ff_numa_read[1-thread_numa_id];
+    } else {
+      local_visit += nap::thread_meta_array[i].ff_numa_write[thread_numa_id];
+      remote_visit += nap::thread_meta_array[i].ff_numa_write[1-thread_numa_id];
+    }
+    memset(nap::thread_meta_array[i].ff_numa_read, 0, sizeof(nap::thread_meta_array[i].ff_numa_read));
+    memset(nap::thread_meta_array[i].ff_numa_write, 0, sizeof(nap::thread_meta_array[i].ff_numa_write));
+  }
+
+  std::cout << "local visit: " << local_visit << std::endl;
+  std::cout << "remote visit: " << remote_visit << std::endl;
 }

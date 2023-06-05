@@ -1,0 +1,7 @@
+-- NDEBUG: defined
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/zzy/NALI/build
+[ 33%] Built target nvm_test
+Scanning dependencies of target nali_multi_bench
+[ 50%] Building CXX object CMakeFiles/nali_multi_bench.dir/benchmark/multi_bench.cpp.o

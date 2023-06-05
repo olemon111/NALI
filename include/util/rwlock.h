@@ -95,6 +95,7 @@ class SpinLatch {
 
  private:
   std::atomic_int8_t _lock{0};
+  char padding[63];
 };
 
 class SpinLock {

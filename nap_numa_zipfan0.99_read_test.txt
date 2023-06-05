@@ -1,0 +1,99 @@
+-- NDEBUG: defined
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/zzy/NALI/build
+[ 33%] Built target nvm_test
+[ 50%] Building CXX object CMakeFiles/nali_multi_bench.dir/benchmark/multi_bench.cpp.o
+[ 66%] Linking CXX executable nali_multi_bench
+[ 66%] Built target nali_multi_bench
+[100%] Built target nali_utree
+2023年 06月 01日 星期四 00:28:53 CST
+NUMA0 THREAD NUMBER:   2
+NUMA1 THREAD NUMBER:   2
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2511 ms (199.124 M values/s)
+[;34m[INFO]  2023-06-01 00:28:55.656263 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73892 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-06-01 00:29:03.930650 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-06-01 00:29:03.930824 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-06-01 00:29:03.930860 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.000371s, iops 0 .
+dram space use: 0.00012207 GB
+[;34m[INFO]  2023-06-01 00:29:03.931305 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 55.8544s, iops 286459 .
+[;34m[INFO]  2023-06-01 00:30:00.550924 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 17.2146s, iops 580903 .
+[;34m[INFO]  2023-06-01 00:30:22.765797 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.999 64000000: cost 49.0293s, iops 1.30534e+06 .
+hit rate: 0
+local visit: 13580360
+remote visit: 13572989
+----------------
+2023年 06月 01日 星期四 00:31:22 CST
+NUMA0 THREAD NUMBER:   16
+NUMA1 THREAD NUMBER:   16
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2532 ms (197.472 M values/s)
+[;34m[INFO]  2023-06-01 00:31:25.2889 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73903 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-06-01 00:31:33.246895 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-06-01 00:31:33.247289 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-06-01 00:31:33.247406 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.006111s, iops 0 .
+dram space use: 0.00043869 GB
+[;34m[INFO]  2023-06-01 00:31:33.253680 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 18.3928s, iops 869906 .
+[;34m[INFO]  2023-06-01 00:31:52.363478 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.19353s, iops 1.61459e+06 .
+[;34m[INFO]  2023-06-01 00:32:03.557349 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.999 64000000: cost 16.0886s, iops 3.97797e+06 .
+hit rate: 0
+local visit: 20469117
+remote visit: 20481504
+----------------

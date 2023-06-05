@@ -101,11 +101,11 @@ hashshards=128
 
 # alexol var hashshards 
 function run_all() {
-    dbs="alexol"
+    dbs="nap"
     for dbname in $dbs; do
         for bgthreads in 2 # 4 8 16
         do
-            for thread in 16 # {1..16}
+            for thread in 16
             do
                 Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards
             done

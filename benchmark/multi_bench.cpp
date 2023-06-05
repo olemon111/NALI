@@ -23,9 +23,14 @@
 std::atomic<size_t> pmem_alloc_bytes(0);
 #endif
 
+#ifdef USE_CACHE
+uint64_t hit_cnt[64];
+#endif
+
 // #define STATISTIC_PMEM_INFO
 
-// #define NAP_OURS_CMP_TEST
+#define NAP_OURS_CMP_TEST
+bool zipfan_numa_test_flag = false;
 
 #define PERF_TEST
 #define USE_BULKLOAD
@@ -35,9 +40,9 @@ std::atomic<size_t> pmem_alloc_bytes(0);
 #ifndef ONLY_INSERT
   // #define RECOVERY_TEST
     #ifndef RECOVERY_TEST
-      // #define ZIPFAN_TEST
+      #define ZIPFAN_TEST
       #ifdef ZIPFAN_TEST
-      #define ZIPFAN_UPDATE_TEST
+      // #define ZIPFAN_UPDATE_TEST
       #endif
       // #define MIX_UPDATE_TEST
       // #define MIX_INSERT_TEST
@@ -81,7 +86,7 @@ size_t PUT_SIZE    = 10000000;
 size_t GET_SIZE    = 100000000;
 size_t UPDATE_SIZE = 10000000;
 size_t DELETE_SIZE = 10000000;
-size_t ZIPFAN_SIZE = 10000000;
+size_t ZIPFAN_SIZE = 20000000;
 size_t MIX_SIZE    = 10000000;
 int Loads_type = 3;
 
@@ -174,6 +179,13 @@ void show_help(char* prog) {
 }
 
 int main(int argc, char *argv[]) {
+    // uint64_t a = 64000000;
+    // for (int i = 1; i <= 16; i++) {
+    //   int v = a / (16 + i);
+    //   printf("%d\n", v*i);
+    // }
+    // return 0;
+
     static struct option opts[] = {
   /* NAME               HAS_ARG            FLAG  SHORTNAME*/
     // {"thread",          required_argument, NULL, 't'},
@@ -220,23 +232,22 @@ int main(int argc, char *argv[]) {
       default:  std::cout << (char)c << std::endl; abort();
     }
   }
-
-  //   // 测1->32线程
-    if (total_thread_num <= 16) {
-      numa0_thread_num = total_thread_num;
-      numa1_thread_num = 0;
-    } else {
-      numa0_thread_num = 16;
-      numa1_thread_num = total_thread_num - numa0_thread_num;
-    }
-  recovery_threads_num = total_thread_num;
-  // 测2,4,6->32线程
+    // 测1->32线程
   // if (total_thread_num <= 16) {
   //   numa0_thread_num = total_thread_num;
-  //   numa1_thread_num = total_thread_num;
-  //   total_thread_num *= 2;
+  //   numa1_thread_num = 0;
+  // } else {
+  //   numa0_thread_num = 16;
+  //   numa1_thread_num = total_thread_num - numa0_thread_num;
   // }
-
+  recovery_threads_num = total_thread_num;
+  // 测2,4,6->32线程
+  if (total_thread_num <= 16) {
+    numa0_thread_num = total_thread_num;
+    numa1_thread_num = total_thread_num;
+    total_thread_num *= 2;
+  }
+  dbName = "nap";
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
   if (dbName == "nap") {
@@ -264,6 +275,7 @@ int main(int argc, char *argv[]) {
   std::cout << "GET_SIZE:              " << GET_SIZE << std::endl;
   std::cout << "UPDATE_SIZE:           " << UPDATE_SIZE << std::endl;
   std::cout << "DELETE_SIZE:           " << DELETE_SIZE << std::endl;
+  std::cout << "ZIPFAN_SIZE:           " << ZIPFAN_SIZE << std::endl;
   std::cout << "DB  name:              " << dbName << std::endl;
   std::cout << "Workload:              " << load_file << std::endl;
 #ifdef VARVALUE
@@ -360,9 +372,9 @@ int main(int argc, char *argv[]) {
   // else if (dbName == "dptree") {
   //   db = new nali::dptree_db<KEY_TYPE, VALUE_TYPE>(total_thread_num);
   // } 
-  // else if (dbName == "nap") {
-  //   db = new nali::napfastfair_db<KEY_TYPE, VALUE_TYPE>();
-  // }
+  else if (dbName == "nap") {
+    db = new nali::napfastfair_db<KEY_TYPE, VALUE_TYPE>();
+  }
    else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
@@ -709,101 +721,122 @@ int main(int argc, char *argv[]) {
 
 #ifdef ZIPFAN_TEST
   {
-    std::vector<float> zipfan_params = {0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
+    // std::vector<float> zipfan_params = {0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
+    std::vector<float> zipfan_params = {0.99};
     bool is_read = true;
+    
 zipfan_test:
     LOG_INFO(" @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@");
-    for (int loop = 0; loop < zipfan_params.size(); loop++) {
-      std::vector<std::thread> threads;
-      std::atomic<uint64_t> thread_idx_count(0);
-      size_t per_thread_size = ZIPFAN_SIZE / total_thread_num;
-      Random get_rnd(10000000, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
-      size_t pos_arr_size = 4000000;
-      std::vector<size_t> pos_arr(pos_arr_size);
-      for (int i = 0; i < pos_arr_size; i++)
-        pos_arr[i] = get_rnd.Next();
-      size_t *test_union = get_search_keys_zipf_with_theta(pos_arr.data(), pos_arr_size, ZIPFAN_SIZE, zipfan_params[loop]);
+    for (int times = 0; times < 1; times++) {
+      if (times == 0) {
+        zipfan_numa_test_flag = true;
+      }
+      for (int loop = 0; loop < zipfan_params.size(); loop++) {
+        #ifdef USE_CACHE
+        memset(hit_cnt, 0, sizeof(hit_cnt));
+        #endif
+        std::vector<std::thread> threads;
+        std::atomic<uint64_t> thread_idx_count(0);
+        size_t per_thread_size = ZIPFAN_SIZE / total_thread_num;
+        Random get_rnd(10000000, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
+        size_t pos_arr_size = 4000000;
+        std::vector<size_t> pos_arr(pos_arr_size);
+        for (int i = 0; i < pos_arr_size; i++)
+          pos_arr[i] = get_rnd.Next();
+        size_t *test_union = get_search_keys_zipf_with_theta(pos_arr.data(), pos_arr_size, ZIPFAN_SIZE, zipfan_params[loop]);
 
-      #ifdef STATISTIC_PMEM_INFO
-      pin_start(&nvdimm_counter_begin);
-      #endif
+        #ifdef STATISTIC_PMEM_INFO
+        pin_start(&nvdimm_counter_begin);
+        #endif
 
-      auto ts = TIME_NOW;
-      for (int i = 0; i < thread_id_arr.size(); ++i) {
-          threads.emplace_back([&](){
-          size_t idx = thread_idx_count.fetch_add(1); 
-          global_thread_id = thread_id_arr[idx];
-          bindCore(global_thread_id);
-          size_t size = (idx == thread_id_arr.size()-1) ? (ZIPFAN_SIZE-idx*per_thread_size) : per_thread_size;
-          size_t start_pos = idx * per_thread_size;
-              
-          int wrong_get = 0;
-          #ifdef VARVALUE
-            std::string value(VALUE_LENGTH, '1');
-            std::string cmp_value(VALUE_LENGTH, '1');
-          #else
-            size_t value;
-          #endif
-          size_t t_v = 0x19990627UL;
-          for (int times = 0; times < 1; times++) {
-            for (size_t j = 0; j < size; ++j) {
-              bool ret;
-              if (!is_read) {
-                #ifdef VARVALUE
-                  #ifndef PERF_TEST
-                  memcpy((char *)value.c_str(), &t_v, 8);
+        auto ts = TIME_NOW;
+        for (int i = 0; i < thread_id_arr.size(); ++i) {
+            threads.emplace_back([&](){
+            size_t idx = thread_idx_count.fetch_add(1); 
+            global_thread_id = thread_id_arr[idx];
+            bindCore(global_thread_id);
+            size_t size = (idx == thread_id_arr.size()-1) ? (ZIPFAN_SIZE-idx*per_thread_size) : per_thread_size;
+            size_t start_pos = idx * per_thread_size;
+                
+            int wrong_get = 0;
+            #ifdef VARVALUE
+              std::string value(VALUE_LENGTH, '1');
+              std::string cmp_value(VALUE_LENGTH, '1');
+            #else
+              size_t value;
+            #endif
+            size_t t_v = 0x19990627UL;
+            for (int times = 0; times < 1; times++) {
+              for (size_t j = 0; j < size; ++j) {
+                bool ret;
+                if (!is_read) {
+                  #ifdef VARVALUE
+                    #ifndef PERF_TEST
+                    memcpy((char *)value.c_str(), &t_v, 8);
+                    #endif
+                    ret = db->update(data_base[test_union[start_pos+j]], value);
+                  #else
+                    ret = db->update(data_base[test_union[start_pos+j]], t_v);
                   #endif
-                  ret = db->update(data_base[test_union[start_pos+j]], value);
-                #else
-                  ret = db->update(data_base[test_union[start_pos+j]], t_v);
-                #endif
-              } else {
-                #ifdef VARVALUE
-                  ret = db->search(data_base[test_union[start_pos+j]], value);
-                  #ifndef PERF_TEST
-                  memcpy((char *)cmp_value.c_str(), &data_base[test_union[start_pos+j]], 8);
-                  if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
-                    wrong_get++;
-                  }
+                } else {
+                  #ifdef VARVALUE
+                    ret = db->search(data_base[test_union[start_pos+j]], value);
+                    #ifndef PERF_TEST
+                    memcpy((char *)cmp_value.c_str(), &data_base[test_union[start_pos+j]], 8);
+                    if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
+                      wrong_get++;
+                    }
+                    #endif
+                  #else
+                    ret = db->search(data_base[test_union[start_pos+j]], value);
+                    #ifndef PERF_TEST
+                    if (!ret || (value != data_base[test_union[start_pos+j]] && value != 0x19990627UL)) {
+                      wrong_get++;
+                    }
+                    #endif
                   #endif
-                #else
-                  ret = db->search(data_base[test_union[start_pos+j]], value);
-                  #ifndef PERF_TEST
-                  if (!ret || (value != data_base[test_union[start_pos+j]] && value != 0x19990627UL)) {
-                    wrong_get++;
-                  }
-                  #endif
-                #endif
-              }
-              if(idx == 0 && (j + 1) % 100000 == 0) {
-                std::cerr << "Operate: " << j + 1 << '\r'; 
+                }
+                if(idx == 0 && (j + 1) % 100000 == 0) {
+                  std::cerr << "Operate: " << j + 1 << '\r'; 
+                }
               }
             }
+            
+            if (wrong_get != 0) {
+              std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
+            }
+          });
+        }
+
+        for (auto& t : threads)
+          t.join();
+            
+        auto te = TIME_NOW;
+
+        #ifdef STATISTIC_PMEM_INFO
+        pin_end(&nvdimm_counter_end);
+        // print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+        #endif
+        
+        if (times == 0) {
+          auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+          std::string test_type = is_read ? "[zipfan_read]: " : "[zipfan_update]: ";
+          std::cout << test_type << "zipfan" << zipfan_params[loop] << " " << ZIPFAN_SIZE << ": " 
+                    << "cost " << use_seconds << "s, " 
+                    << "iops " << (double)(ZIPFAN_SIZE)/use_seconds << " ." << std::endl;
+          // delete [] zipfan_base;
+          #ifdef USE_CACHE
+          uint64_t total_hit = 0;
+          for (int i = 0; i < 64; ++i) {
+            total_hit += hit_cnt[i];
           }
-          
-          if (wrong_get != 0) {
-            std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
-          }
-        });
+          std::cout << "hit rate: " << total_hit * 1.0 / ZIPFAN_SIZE << std::endl;
+          #endif
+          db->get_info();
+        }
       }
-
-      for (auto& t : threads)
-        t.join();
-          
-      auto te = TIME_NOW;
-
-      #ifdef STATISTIC_PMEM_INFO
-      pin_end(&nvdimm_counter_end);
-      // print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-      #endif
-      
-      auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-      std::string test_type = is_read ? "[zipfan_read]: " : "[zipfan_update]: ";
-      std::cout << test_type << "zipfan" << zipfan_params[loop] << " " << ZIPFAN_SIZE << ": " 
-                << "cost " << use_seconds << "s, " 
-                << "iops " << (double)(ZIPFAN_SIZE)/use_seconds << " ." << std::endl;
-      // delete [] zipfan_base;
     }
+    
     #ifdef ZIPFAN_UPDATE_TEST
     if (is_read) {
       is_read = false;
@@ -1267,65 +1300,65 @@ zipfan_test:
   //   }
   // }
 
-  {
-    // Put
-    PUT_SIZE = 50000000;
-    LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
-    std::vector<std::thread> threads;
-    std::atomic<uint64_t> thread_idx_count(0);
-    size_t per_thread_size = PUT_SIZE / total_thread_num;
+  // {
+  //   // Put
+  //   PUT_SIZE = 50000000;
+  //   LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
+  //   std::vector<std::thread> threads;
+  //   std::atomic<uint64_t> thread_idx_count(0);
+  //   size_t per_thread_size = PUT_SIZE / total_thread_num;
 
-    #ifdef STATISTIC_PMEM_INFO
-    pin_start(&nvdimm_counter_begin);
-    #endif
+  //   #ifdef STATISTIC_PMEM_INFO
+  //   pin_start(&nvdimm_counter_begin);
+  //   #endif
     
-    auto ts = TIME_NOW;
+  //   auto ts = TIME_NOW;
 
-    for(int i = 0; i < thread_id_arr.size(); i++) {
-      threads.emplace_back([&](){
-        size_t idx = thread_idx_count.fetch_add(1); 
-        global_thread_id = thread_id_arr[idx];
-        bindCore(global_thread_id);
-        size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
-        size_t start_pos = idx * per_thread_size + 300000000;
-        #ifdef VARVALUE
-        std::string value(VALUE_LENGTH, '1');
-        #endif
-        for (size_t j = 0; j < size; ++j) {
-          #ifdef VARVALUE
-          #ifndef PERF_TEST
-          memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
-          #endif
-          auto ret = db->insert(data_base[start_pos+j], value);
-          #else
-          auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-          #endif
-          // if (ret != 1) {
-          //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
-          //     assert(0);
-          // }
-          if(idx == 0 && (j + 1) % 100000 == 0) {
-            std::cerr << "Operate: " << j + 1 << '\r'; 
-          }
-        }
-      });
-    }
+  //   for(int i = 0; i < thread_id_arr.size(); i++) {
+  //     threads.emplace_back([&](){
+  //       size_t idx = thread_idx_count.fetch_add(1); 
+  //       global_thread_id = thread_id_arr[idx];
+  //       bindCore(global_thread_id);
+  //       size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
+  //       size_t start_pos = idx * per_thread_size + 300000000;
+  //       #ifdef VARVALUE
+  //       std::string value(VALUE_LENGTH, '1');
+  //       #endif
+  //       for (size_t j = 0; j < size; ++j) {
+  //         #ifdef VARVALUE
+  //         #ifndef PERF_TEST
+  //         memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
+  //         #endif
+  //         auto ret = db->insert(data_base[start_pos+j], value);
+  //         #else
+  //         auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+  //         #endif
+  //         // if (ret != 1) {
+  //         //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
+  //         //     assert(0);
+  //         // }
+  //         if(idx == 0 && (j + 1) % 100000 == 0) {
+  //           std::cerr << "Operate: " << j + 1 << '\r'; 
+  //         }
+  //       }
+  //     });
+  //   }
 
-    for (auto& t : threads)
-      t.join();
+  //   for (auto& t : threads)
+  //     t.join();
         
-    auto te = TIME_NOW;
+  //   auto te = TIME_NOW;
 
-    #ifdef STATISTIC_PMEM_INFO
-    pin_end(&nvdimm_counter_end);
-    print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-    #endif
+  //   #ifdef STATISTIC_PMEM_INFO
+  //   pin_end(&nvdimm_counter_end);
+  //   print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
+  //   #endif
 
-    auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-    std::cout << "[Put]: Put " << PUT_SIZE << ": " 
-              << "cost " << use_seconds << "s, " 
-              << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
-  }
+  //   auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
+  //   std::cout << "[Put]: Put " << PUT_SIZE << ": " 
+  //             << "cost " << use_seconds << "s, " 
+  //             << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
+  // }
   delete db;
 #endif
 #endif

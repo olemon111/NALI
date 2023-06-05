@@ -14,7 +14,7 @@ set(MKL_INCLUDE_DIRECTORY "/opt/intel/mkl/include")
 link_directories(${MKL_LINK_DIRECTORY})
 include_directories(${MKL_INCLUDE_DIRECTORY})
 
-set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -march=native -O3")
+set(CMAKE_CXX_FLAGS "-lnuma -lrt -lpthread -ldl -mrtm -msse4.1 -mavx2 -fopenmp -march=native -g")
 
 add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
@@ -90,3 +90,6 @@ link_libraries(
 add_executable(nali_multi_bench benchmark/multi_bench.cpp)            
 # add_dependencies(nali_multi_bench PMDK)
 target_link_libraries(nali_multi_bench PRIVATE ${libs_to_link})
+
+add_executable(nvm_test background_test/nvm_test.cpp)            
+target_link_libraries(nvm_test PRIVATE ${libs_to_link})

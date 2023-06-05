@@ -1,2 +1,1 @@
-0-15 W6 seq 200m dram 1
-32-47 W6 seq 200m dram 1
+1 R seq 400m pmem /mnt/pmem1

@@ -21,6 +21,8 @@
 
 #include "index/NUMA_Config.h"
 
+#define TEST_NAP_NUMA
+
 namespace fastfair {
 
 #define FF_PAGESIZE 512
@@ -98,14 +100,13 @@ class btree {
 private:
   int height;
   char *root;
-
 public:
   btree();
   ~btree() {}
   void setNewRoot(char *) __attribute__((optimize(0)));
   void getNumberOfNodes() __attribute__((optimize(0)));
   void btree_insert(uint64_t, char *) __attribute__((optimize(0)));
-  void btree_insert(char *, char *) __attribute__((optimize(0)));
+  int8_t btree_insert(char *, char *) __attribute__((optimize(0))); // (zzy)
   void btree_insert_internal(char *, uint64_t, char *, uint32_t)
       __attribute__((optimize(0)));
   void btree_insert_internal(char *, key_item *, char *, uint32_t)
@@ -114,7 +115,7 @@ public:
   // void btree_delete_internal
   //    (entry_key_t, char *, uint32_t, entry_key_t *, bool *, page **);
   char *btree_search(uint64_t) __attribute__((optimize(0)));
-  char *btree_search(char *) __attribute__((optimize(0)));
+  int8_t btree_search(char *) __attribute__((optimize(0))); // (zzy)
   void btree_search_range(uint64_t, uint64_t, unsigned long *, int, int &)
       __attribute__((optimize(0)));
   void btree_search_range(char *, char *, unsigned long *, int, int &)
@@ -138,7 +139,7 @@ public:
 };
 
 class header {
-private:
+public:
   page *leftmost_ptr;      // 8 bytes
   page *sibling_ptr;       // 8 bytes
   uint32_t level;          // 4 bytes
@@ -147,13 +148,14 @@ private:
   union Key highest;       // 8 bytes
   uint8_t is_deleted;      // 1 bytes
   int16_t last_index;      // 2 bytes
-  uint8_t dummy[5];        // 5 bytes
+  int8_t numa_id;          // 1 bytes
+  uint8_t dummy[4];        // 4 bytes
 
   friend class page;
   friend class btree;
 
 public:
-  header() {
+  header(int8_t numaid) {
     mtx = new std::mutex();
 
     leftmost_ptr = NULL;
@@ -161,6 +163,7 @@ public:
     switch_counter = 0;
     last_index = -1;
     is_deleted = false;
+    numa_id = numaid;
 #ifdef LOCK_INIT
     lock_initializer.push_back(mtx);
 #endif
@@ -195,13 +198,13 @@ private:
 public:
   friend class btree;
 
-  page(uint32_t level = 0) {
+  page(uint32_t level = 0) : hdr(numa_map[global_thread_id]) {
     hdr.level = level;
     records[0].ptr = NULL;
   }
 
   // this is called when tree grows
-  page(page *left, uint64_t key, page *right, uint32_t level = 0) {
+  page(page *left, uint64_t key, page *right, uint32_t level = 0) : hdr(numa_map[global_thread_id]) {
     hdr.leftmost_ptr = left;
     hdr.level = level;
     records[0].key.ikey = key;
@@ -214,7 +217,7 @@ public:
   }
 
   // this is called when tree grows
-  page(page *left, key_item *key, page *right, uint32_t level = 0) {
+  page(page *left, key_item *key, page *right, uint32_t level = 0) : hdr(numa_map[global_thread_id]) {
     hdr.leftmost_ptr = left;
     hdr.level = level;
     records[0].key.skey = key;
@@ -1916,7 +1919,7 @@ char *btree::btree_search(uint64_t key) {
   return (char *)t;
 }
 
-char *btree::btree_search(char *key) {
+int8_t btree::btree_search(char *key) {
   page *p = (page *)root;
 
   key_item *new_item = make_key_item(key, strlen(key) + 1, false);
@@ -1933,7 +1936,14 @@ char *btree::btree_search(char *key) {
     }
   }
 
-  return (char *)t;
+  #ifdef TEST_NAP_NUMA
+  if (p != nullptr) {
+    return p->hdr.numa_id;
+  }
+  return rand() % 1;
+  #else
+  return 0;
+  #endif
 }
 
 // insert the key in the leaf node
@@ -1950,7 +1960,7 @@ void btree::btree_insert(uint64_t key, char *right) { // need to be string
 }
 
 // insert the key in the leaf node
-void btree::btree_insert(char *key, char *right) { // need to be string
+int8_t btree::btree_insert(char *key, char *right) { // need to be string
   page *p = (page *)root;
 
   key_item *new_item = make_key_item(key, strlen(key) + 1, true);
@@ -1962,6 +1972,15 @@ void btree::btree_insert(char *key, char *right) { // need to be string
   if (!p->store(this, NULL, new_item, right, true, true)) { // store
     btree_insert(key, right);
   }
+
+  #ifdef TEST_NAP_NUMA
+  if (p != nullptr) {
+    return p->hdr.numa_id;
+  }
+  return rand() % 1;
+  #else
+  return 0;
+  #endif
 }
 
 // store the integer key into the node at the given level

@@ -1,0 +1,703 @@
+-- NDEBUG: defined
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/zzy/NALI/build
+[ 33%] Built target nvm_test
+[ 66%] Built target nali_multi_bench
+[100%] Built target nali_utree
+2023年 05月 31日 星期三 23:18:49 CST
+NUMA0 THREAD NUMBER:   1
+NUMA1 THREAD NUMBER:   1
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2552 ms (195.925 M values/s)
+[;34m[INFO]  2023-05-31 23:18:52.378448 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73888 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:19:00.393091 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0.000228882 GB
+[;34m[INFO]  2023-05-31 23:19:00.393339 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0.000228882 GB
+[;34m[INFO]  2023-05-31 23:19:00.393394 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.000269s, iops 0 .
+dram space use: 0.000350952 GB
+[;34m[INFO]  2023-05-31 23:19:00.393741 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 105.284s, iops 151970 .
+[;34m[INFO]  2023-05-31 23:20:46.406125 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 31.9395s, iops 313092 .
+[;34m[INFO]  2023-05-31 23:21:23.345918 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 137.044s, iops 467004 .
+hit rate: 0
+local visit: 9956550
+remote visit: 9836336
+----------------
+2023年 05月 31日 星期三 23:23:51 CST
+NUMA0 THREAD NUMBER:   2
+NUMA1 THREAD NUMBER:   2
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2531 ms (197.55 M values/s)
+[;34m[INFO]  2023-05-31 23:23:54.116095 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73885 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:24:01.934014 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:24:01.934363 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:24:01.934456 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.003034s, iops 0 .
+dram space use: 0.00037384 GB
+[;34m[INFO]  2023-05-31 23:24:01.937662 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 55.9136s, iops 286156 .
+[;34m[INFO]  2023-05-31 23:24:58.567313 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 17.202s, iops 581329 .
+[;34m[INFO]  2023-05-31 23:25:20.769485 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 72.4101s, iops 883855 .
+hit rate: 0
+local visit: 9977419
+remote visit: 10071510
+----------------
+2023年 05月 31日 星期三 23:26:44 CST
+NUMA0 THREAD NUMBER:   3
+NUMA1 THREAD NUMBER:   3
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2552 ms (195.925 M values/s)
+[;34m[INFO]  2023-05-31 23:26:46.963893 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.739 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:26:54.809707 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:26:54.810001 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:26:54.810120 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.000851s, iops 0 .
+dram space use: 0.000453949 GB
+[;34m[INFO]  2023-05-31 23:26:54.811126 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 39.2184s, iops 407971 .
+[;34m[INFO]  2023-05-31 23:27:34.712747 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 12.3701s, iops 808400 .
+[;34m[INFO]  2023-05-31 23:27:52.83118 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 46.2379s, iops 1.38415e+06 .
+hit rate: 0
+local visit: 8780183
+remote visit: 9142602
+----------------
+2023年 05月 31日 星期三 23:28:49 CST
+NUMA0 THREAD NUMBER:   4
+NUMA1 THREAD NUMBER:   4
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2512 ms (199.045 M values/s)
+[;34m[INFO]  2023-05-31 23:28:52.34374 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73689 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:28:59.902990 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:28:59.903350 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:28:59.903435 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.000898s, iops 0 .
+dram space use: 0.000247955 GB
+[;34m[INFO]  2023-05-31 23:28:59.904464 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m----------------
+2023年 05月 31日 星期三 23:29:06 CST
+NUMA0 THREAD NUMBER:   5
+NUMA1 THREAD NUMBER:   5
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2515 ms (198.807 M values/s)
+[;34m[INFO]  2023-05-31 23:29:08.705427 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73721 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:29:16.494990 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:29:16.495345 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:29:16.495448 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.001104s, iops 0 .
+dram space use: 0.000324249 GB
+[;34m[INFO]  2023-05-31 23:29:16.496689 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m----------------
+2023年 05月 31日 星期三 23:29:22 CST
+NUMA0 THREAD NUMBER:   6
+NUMA1 THREAD NUMBER:   6
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2506 ms (199.521 M values/s)
+[;34m[INFO]  2023-05-31 23:29:25.353605 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73902 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:29:33.182298 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:29:33.182609 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:29:33.182715 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.001279s, iops 0 .
+dram space use: 0.000450134 GB
+[;34m[INFO]  2023-05-31 23:29:33.184125 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 23.0181s, iops 695105 .
+[;34m[INFO]  2023-05-31 23:29:56.855188 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 7.47909s, iops 1.33706e+06 .
+[;34m[INFO]  2023-05-31 23:30:09.334547 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 28.2704s, iops 2.26385e+06 .
+hit rate: 0
+local visit: 9434653
+remote visit: 9512830
+----------------
+2023年 05月 31日 星期三 23:30:48 CST
+NUMA0 THREAD NUMBER:   7
+NUMA1 THREAD NUMBER:   7
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2546 ms (196.386 M values/s)
+[;34m[INFO]  2023-05-31 23:30:51.338945 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73902 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:30:59.186450 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:30:59.186755 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:30:59.186859 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.001453s, iops 0 .
+dram space use: 0.000263214 GB
+[;34m[INFO]  2023-05-31 23:30:59.188447 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 20.8416s, iops 767697 .
+[;34m[INFO]  2023-05-31 23:31:20.697659 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.87306s, iops 1.45496e+06 .
+[;34m[INFO]  2023-05-31 23:31:32.570931 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 24.0391s, iops 2.66233e+06 .
+hit rate: 0
+local visit: 9087899
+remote visit: 9078821
+----------------
+2023年 05月 31日 星期三 23:32:07 CST
+NUMA0 THREAD NUMBER:   8
+NUMA1 THREAD NUMBER:   8
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2506 ms (199.521 M values/s)
+[;34m[INFO]  2023-05-31 23:32:10.377048 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73882 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:32:18.194314 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:32:18.194601 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:32:18.194693 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.00159s, iops 0 .
+dram space use: 0.000457764 GB
+[;34m[INFO]  2023-05-31 23:32:18.196411 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 19.6953s, iops 812377 .
+[;34m[INFO]  2023-05-31 23:32:38.618588 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.46297s, iops 1.54728e+06 .
+[;34m[INFO]  2023-05-31 23:32:50.81845 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 23.605s, iops 2.71129e+06 .
+hit rate: 0
+local visit: 9745598
+remote visit: 10063052
+----------------
+2023年 05月 31日 星期三 23:33:24 CST
+NUMA0 THREAD NUMBER:   9
+NUMA1 THREAD NUMBER:   9
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2522 ms (198.255 M values/s)
+[;34m[INFO]  2023-05-31 23:33:27.428809 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73911 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:33:35.214526 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:33:35.214817 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:33:35.214903 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.001768s, iops 0 .
+dram space use: 0.000419617 GB
+[;34m[INFO]  2023-05-31 23:33:35.216808 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 18.491s, iops 865285 .
+[;34m[INFO]  2023-05-31 23:33:54.434086 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.19583s, iops 1.61399e+06 .
+[;34m[INFO]  2023-05-31 23:34:05.630178 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 22.3477s, iops 2.86383e+06 .
+hit rate: 0
+local visit: 9334744
+remote visit: 8745705
+----------------
+2023年 05月 31日 星期三 23:34:39 CST
+NUMA0 THREAD NUMBER:   10
+NUMA1 THREAD NUMBER:   10
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2532 ms (197.472 M values/s)
+[;34m[INFO]  2023-05-31 23:34:41.770371 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73899 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:34:49.632407 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:34:49.632789 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:34:49.632876 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.001997s, iops 0 .
+dram space use: 0.000396729 GB
+[;34m[INFO]  2023-05-31 23:34:49.635015 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 18.3106s, iops 873813 .
+[;34m[INFO]  2023-05-31 23:35:08.587506 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.57432s, iops 1.52107e+06 .
+[;34m[INFO]  2023-05-31 23:35:20.162087 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 21.5195s, iops 2.97404e+06 .
+hit rate: 0
+local visit: 8109968
+remote visit: 8225032
+----------------
+2023年 05月 31日 星期三 23:35:52 CST
+NUMA0 THREAD NUMBER:   11
+NUMA1 THREAD NUMBER:   11
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2517 ms (198.649 M values/s)
+[;34m[INFO]  2023-05-31 23:35:55.475359 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73906 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:36:03.289400 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:36:03.289786 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:36:03.289879 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.00372s, iops 0 .
+dram space use: 0.000392914 GB
+[;34m[INFO]  2023-05-31 23:36:03.293769 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m----------------
+2023年 05月 31日 星期三 23:36:09 CST
+NUMA0 THREAD NUMBER:   12
+NUMA1 THREAD NUMBER:   12
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2530 ms (197.628 M values/s)
+[;34m[INFO]  2023-05-31 23:36:11.928566 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.7391 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:36:19.804416 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:36:19.804817 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:36:19.804906 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.002475s, iops 0 .
+dram space use: 0.000385284 GB
+[;34m[INFO]  2023-05-31 23:36:19.807553 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 17.5622s, iops 911048 .
+[;34m[INFO]  2023-05-31 23:36:38.99904 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 5.82466s, iops 1.71684e+06 .
+[;34m[INFO]  2023-05-31 23:36:48.924794 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 22.1869s, iops 2.88459e+06 .
+hit rate: 0
+local visit: 7180807
+remote visit: 7076877
+----------------
+2023年 05月 31日 星期三 23:37:22 CST
+NUMA0 THREAD NUMBER:   13
+NUMA1 THREAD NUMBER:   13
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2511 ms (199.124 M values/s)
+[;34m[INFO]  2023-05-31 23:37:24.748921 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73902 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:37:32.553596 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:37:32.554012 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:37:32.554092 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.003508s, iops 0 .
+dram space use: 0.000404358 GB
+[;34m[INFO]  2023-05-31 23:37:32.557763 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 17.1911s, iops 930717 .
+[;34m[INFO]  2023-05-31 23:37:50.394200 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 5.73813s, iops 1.74273e+06 .
+[;34m[INFO]  2023-05-31 23:38:01.132571 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 20.856s, iops 3.06866e+06 .
+hit rate: 0
+local visit: 6686026
+remote visit: 6833351
+----------------
+2023年 05月 31日 星期三 23:38:33 CST
+NUMA0 THREAD NUMBER:   14
+NUMA1 THREAD NUMBER:   14
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2512 ms (199.045 M values/s)
+[;34m[INFO]  2023-05-31 23:38:35.749125 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73905 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:38:43.608020 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:38:43.608373 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:38:43.608463 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.005198s, iops 0 .
+dram space use: 0.000377655 GB
+[;34m[INFO]  2023-05-31 23:38:43.613835 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 17.8273s, iops 897499 .
+[;34m[INFO]  2023-05-31 23:39:02.251366 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 5.79193s, iops 1.72654e+06 .
+[;34m[INFO]  2023-05-31 23:39:13.43586 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 20.7845s, iops 3.07922e+06 .
+hit rate: 0
+local visit: 6040127
+remote visit: 6341292
+----------------
+2023年 05月 31日 星期三 23:39:45 CST
+NUMA0 THREAD NUMBER:   15
+NUMA1 THREAD NUMBER:   15
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2516 ms (198.728 M values/s)
+[;34m[INFO]  2023-05-31 23:39:47.578492 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.73908 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:39:55.345507 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:39:55.345824 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:39:55.345937 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.003671s, iops 0 .
+dram space use: 0.000411987 GB
+[;34m[INFO]  2023-05-31 23:39:55.349781 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 18.9478s, iops 844427 .
+[;34m[INFO]  2023-05-31 23:40:15.72051 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.10606s, iops 1.63772e+06 .
+[;34m[INFO]  2023-05-31 23:40:26.178399 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 20.6101s, iops 3.10527e+06 .
+hit rate: 0
+local visit: 5762902
+remote visit: 5651778
+----------------
+2023年 05月 31日 星期三 23:40:57 CST
+NUMA0 THREAD NUMBER:   16
+NUMA1 THREAD NUMBER:   16
+BULKLOAD_SIZE:         1
+LOAD_SIZE:             0
+PUT_SIZE:              16000000
+GET_SIZE:              10000000
+UPDATE_SIZE:           10000000
+DELETE_SIZE:           10000000
+ZIPFAN_SIZE:           64000000
+DB  name:              nap
+Workload:              
+valsize:               8
+hash_shards:           128
+bgthreads:             2
+read 500000000 values from /home/zzy/dataset/generate_random_ycsb.dat in 2522 ms (198.255 M values/s)
+[;34m[INFO]  2023-05-31 23:41:00.531696 multi_bench.cpp:310: @@@@@@@@@@@@ Init @@@@@@@@@@@@
+[0mbefore newdb, dram space use: 3.7391 GB
+numa 0 pool: /mnt/pmem0/zzy/numa
+numa 1 pool: /mnt/pmem1/zzy/numa
+nap insert some kvs into numa0
+nap insert some kvs into numa1
+nap warm up...
+nap 0 pool: /mnt/pmem0/zzy/nap
+nap 1 pool: /mnt/pmem1/zzy/nap
+shift thread finished init [33].
+nap warm up end
+nap init end
+[;34m[INFO]  2023-05-31 23:41:08.370641 multi_bench.cpp:410: @@@@ BULK LOAD START @@@@
+[0mafter bulkload: dram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:41:08.370950 multi_bench.cpp:416: @@@@ BULK LOAD END @@@@
+[0mdram space use: 0 GB
+[;34m[INFO]  2023-05-31 23:41:08.371046 multi_bench.cpp:428:  @@@@@@@@@@@@@ LOAD @@@@@@@@@@@@@@@
+[0m[Load]: Load 0: cost 0.003074s, iops 0 .
+dram space use: 0.000396729 GB
+[;34m[INFO]  2023-05-31 23:41:08.374270 multi_bench.cpp:496:  @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@
+[0m[Put]: Put 16000000: cost 18.6214s, iops 859226 .
+[;34m[INFO]  2023-05-31 23:41:27.748881 multi_bench.cpp:568:  @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@
+[0m[Get]: Get 10000000: cost 6.22797s, iops 1.60566e+06 .
+[;34m[INFO]  2023-05-31 23:41:38.977208 multi_bench.cpp:728:  @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@
+[0m[zipfan_read]: zipfan0.9 64000000: cost 22.6714s, iops 2.82294e+06 .
+hit rate: 0
+local visit: 5346526
+remote visit: 5366371
+----------------

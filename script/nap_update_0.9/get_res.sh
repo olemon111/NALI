@@ -115,7 +115,7 @@ function get_zipfan_update()
 function get_nap_local_visit()
 {
     if cat $1 | grep -q "local" ; then
-        cat $1 | grep "local" | grep -w $2 | awk '{print $3}'
+        cat $1 | grep "local" | awk '{print $3}'
     else
         echo "0"
     fi
@@ -124,7 +124,7 @@ function get_nap_local_visit()
 function get_nap_remote_visit()
 {
     if cat $1 | grep -q "remote" ; then
-        cat $1 | grep "remote" | grep -w $2 | awk '{print $3}'
+        cat $1 | grep "remote" | awk '{print $3}'
     else
         echo "0"
     fi
@@ -133,7 +133,7 @@ function get_nap_remote_visit()
 function get_nap_read_iops()
 {
     if cat $1 | grep -q "zipfan_read" ; then
-        cat $1 | grep "zipfan_read" | grep -w $2 | awk '{print $7/1e+06}'
+        cat $1 | grep "zipfan_read" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -142,7 +142,16 @@ function get_nap_read_iops()
 function get_nap_update_iops()
 {
     if cat $1 | grep -q "zipfan_update" ; then
-        cat $1 | grep "zipfan_update" | grep -w $2 | awk '{print $7/1e+06}'
+        cat $1 | grep "zipfan_update" | awk '{print $7/1e+06}'
+    else
+        echo "0"
+    fi
+}
+
+function get_nap_re_visit()
+{
+    if cat $1 | grep -q "zipfan_update" ; then
+        cat $1 | grep "zipfan_update" | awk '{print $5*100000}'
     else
         echo "0"
     fi
@@ -159,6 +168,7 @@ workload=ycsb-200m
 for thread in {1..16}
 do
     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128.txt"
+    get_nap_re_visit $logfile
     # get_numa0_read $logfile
     # get_numa0_write $logfile
     # get_multi_put $logfile

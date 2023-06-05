@@ -13,13 +13,22 @@
 #include "util/xxhash.h"
 #include "thread_pool.h"
 #include "../src/nali_kvlog.h"
+#include "new_cache.h"
 
+#define USE_CACHE
 // #define SCAN_USE_THREAD_POOL
 extern size_t PER_THREAD_POOL_THREADS;
 
 extern size_t VALUE_LENGTH;
 extern thread_local size_t global_thread_id;
+
+#ifdef USE_CACHE
 thread_local size_t get_cnt = 0;
+extern uint64_t hit_cnt[64];
+#endif
+
+
+uint64_t fake_array[20000000];
 namespace nali {
 
 template<typename key_t, typename value_t>
@@ -33,6 +42,7 @@ public:
 	}
 	
 	void put(const key_t& key, const value_t& value) {
+        std::lock_guard<std::mutex> lg(latch_);
 		auto it = _cache_items_map.find(key);
 		_cache_items_list.push_front(key_value_pair_t(key, value));
 		if (it != _cache_items_map.end()) {
@@ -50,21 +60,24 @@ public:
 	}
 	
 	bool get(const key_t& key, value_t &val) {
+        std::lock_guard<std::mutex> lg(latch_);
 		auto it = _cache_items_map.find(key);
 		if (it == _cache_items_map.end()) {
             return false;
 		} else {
-			// _cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
+			_cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
 			val = it->second->second;
             return true;
 		}
 	}
 	
 	bool exists(const key_t& key) const {
+        std::lock_guard<std::mutex> lg(latch_);
 		return _cache_items_map.find(key) != _cache_items_map.end();
 	}
 	
 	size_t size() const {
+        std::lock_guard<std::mutex> lg(latch_);
 		return _cache_items_map.size();
 	}
 	
@@ -72,47 +85,61 @@ private:
 	std::list<key_value_pair_t> _cache_items_list;
 	std::unordered_map<key_t, list_iterator_t> _cache_items_map;
 	size_t _max_size;
+    std::mutex latch_;
 };
 
+#define USE_NUMA_CACHE
 template<typename key_t, typename value_t>
 class shard_lru_cache {
 public:
-    shard_lru_cache(size_t shards = 10485763, size_t per_cache_cap = 16) : shards_(shards) {
+    shard_lru_cache(size_t shards = 1048576, size_t per_cache_cap = 16) : shards_(shards) {
+        #ifdef USE_NUMA_CACHE
+        cache_arr_ = new NumaCache*[shards];
+        for (int i = 0; i < shards; ++i) {
+            cache_arr_[i] = new NumaCache(per_cache_cap);
+        }
+        #else
         cache_arr_ = new lru_cache<uint64_t, uint64_t>*[shards];
         for (int i = 0; i < shards; i++) {
             cache_arr_[i] = new lru_cache<uint64_t, uint64_t>(per_cache_cap);
         }
-        latch_arr_ = new SpinLatch*[shards];
-        for (int i = 0; i < shards; i++) {
-            latch_arr_[i] = new SpinLatch();
-        }
+        #endif
     }
 
     ~shard_lru_cache() {
-        delete [] latch_arr_;
         delete [] cache_arr_;
     }
 
     bool get(const key_t& key, uint64_t key_hash, value_t &value) {
         size_t shard_id = key_hash % shards_;
-        latch_arr_[shard_id]->RLock();
+        #ifdef USE_NUMA_CACHE
+        NumaCache *cache = cache_arr_[shard_id];
+        bool ret = cache->get(key, value, get_numa_id(global_thread_id));
+        #else
         bool ret = cache_arr_[shard_id]->get(key, value);
-        latch_arr_[shard_id]->RUnlock();
+        #endif
         return ret;
     }
 
     void put(const key_t& key, uint64_t key_hash, const value_t& value) {
         size_t shard_id = key_hash % shards_;
-        latch_arr_[shard_id]->WLock();
+        #ifdef USE_NUMA_CACHE
+        cache_arr_[shard_id]->put(key, value, get_numa_id(global_thread_id));
+        #else
         cache_arr_[shard_id]->put(key, value);
-        latch_arr_[shard_id]->WUnlock();
+        #endif
     }
 
 private:
+    #ifdef USE_NUMA_CACHE
+    NumaCache **cache_arr_;
+    #else
     lru_cache<key_t, value_t> **cache_arr_;
-    SpinLatch **latch_arr_;
+    #endif
     size_t shards_;
 };
+
+    // thread_local shard_lru_cache<uint64_t, uint64_t> *shard_lru_cache_ = new shard_lru_cache<uint64_t, uint64_t>();
 
     template <class T, class P>
     static inline void scan_help(std::pair<T, P>* &result, const std::pair<T, uint64_t> *t_values, const std::vector<int> pos_arr, int *complete_elems) {
@@ -137,6 +164,9 @@ private:
                 #ifdef SCAN_USE_THREAD_POOL
                 for (int i = 0; i < numa_node_num; i++)
                     thread_pool_[i] = new ThreadPool(i, PER_THREAD_POOL_THREADS);
+                #endif
+                #ifdef USE_CACHE
+                shard_lru_cache_ = new shard_lru_cache<T, P>();
                 #endif
                 if (recovery) {
                     std::cout << "recovery thread nums:" << recovery_thread_num << std::endl;
@@ -189,7 +219,17 @@ private:
             bool search(const T& key, P &payload) {
                 const T kkk = key;
                 uint64_t key_hash = XXH3_64bits(&kkk, sizeof(kkk));
-
+                #ifdef USE_CACHE
+                get_cnt++;
+                // fake read
+                // payload = fake_array[key_hash%20000000];
+                // return true;
+                bool res = shard_lru_cache_->get(key, key_hash, payload);
+                if (res) {
+                    hit_cnt[global_thread_id]++;
+                    return res;
+                }
+                #endif
                 uint64_t addr_info = 0;
                 bool ret = db_->search(key, addr_info);
                 if (!ret)
@@ -201,6 +241,12 @@ private:
                     payload.assign(((char*)pmem_addr) + 26, log_info.vlen_);
                 #else
                     memcpy(&payload, (char*)pmem_addr + 16, 8);
+                #endif
+
+                #ifdef USE_CACHE
+                if (!res || get_cnt % 32 == 0) {// 采样
+                    shard_lru_cache_->put(key, key_hash, payload);
+                }
                 #endif
 
                 return ret;
@@ -332,5 +378,6 @@ private:
             #ifdef SCAN_USE_THREAD_POOL
             ThreadPool *thread_pool_[numa_node_num];
             #endif
+            shard_lru_cache<T, P> *shard_lru_cache_;
     };
 }
