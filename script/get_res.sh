@@ -148,7 +148,9 @@ function get_nap_update_iops()
     fi
 }
 
-dbname=nap
+# dbname=nap
+dbname=alexol
+# dbname=nap-nali
 workload=ycsb-200m
 # workload=longlat-200m
 # workload=longtitudes-200m
@@ -186,7 +188,7 @@ do
     # get_zipfan_update $logfile "zipfan0.6"
     # get_zipfan_update $logfile "zipfan0.5"
 
-    # get_zipfan_get $logfile "zipfan0.99"
+    get_zipfan_get $logfile "zipfan0.99"
     # get_zipfan_get $logfile "zipfan0.9"
     # get_zipfan_get $logfile "zipfan0.8"
     # get_zipfan_get $logfile "zipfan0.7"

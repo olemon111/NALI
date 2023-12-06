@@ -256,7 +256,7 @@ int main(int argc, char *argv[]) {
     PUT_SIZE = 16000000;
     ZIPFAN_SIZE = 64000000;
     MIX_SIZE=0;
-  } else if (dbName == "alexol") {
+  } else if (dbName == "alexol" || dbName == "nap-nali") {
     LOAD_SIZE = 0;
     PUT_SIZE = 6000000;
     ZIPFAN_SIZE = 64000000;
@@ -375,6 +375,10 @@ int main(int argc, char *argv[]) {
   else if (dbName == "nap") {
     db = new nali::napfastfair_db<KEY_TYPE, VALUE_TYPE>();
   }
+  else if (dbName == "nap-nali")
+  {
+    db = new nali::napnali_db<KEY_TYPE, VALUE_TYPE>();
+  }
    else {
     LOG_INFO("not defined db: %s", dbName.c_str());
     assert(false);
@@ -402,7 +406,7 @@ int main(int argc, char *argv[]) {
       #endif
     }
 
-    if (dbName == "alexol" || dbName == "apex") {
+    if (dbName == "alexol" || dbName == "apex" || dbName == "nap-nali") {
       std::sort(values, values + BULKLOAD_SIZE,
         [&](auto const& a, auto const& b) { return a.first < b.first; });
     }

@@ -14,109 +14,331 @@
 #include "tbb/tbb.h"
 #include <utility>
 
-namespace nali {
+namespace nali
+{
     template <class T, class P>
-    class nalidb : public Tree<T, P> {
-        public:
-            typedef std::pair<T, P> V;
-            nalidb() {
-                db_ = new nali::Nali();
-                db_->Init();
-            }
+    class alexoldb : public Tree<T, P>
+    {
+    public:
+        typedef std::pair<T, P> V;
+        alexoldb()
+        {
+            db_ = new alexol::Alex<T, P>();
+            db_->set_max_model_node_size(1 << 24);
+            db_->set_max_data_node_size(1 << 17);
+        }
 
-            ~nalidb() {
-                delete db_;
-            }
+        ~alexoldb()
+        {
+            delete db_;
+        }
 
-            void bulk_load(const V values[], int num_keys) {
-                // db_->bulk_load(values, num_keys);
-                for (int i = 0; i < num_keys; i++) {
-                    db_->Put(values[i].first, values[i].second);
-                }
-            }
+        void bulk_load(const V values[], int num_keys)
+        {
+            db_->bulk_load(values, num_keys);
+        }
 
-            bool insert(const T& key, const P& payload) {
-                return db_->Put(key, payload);
-            }
+        bool insert(const T &key, const P &payload)
+        {
+            return db_->insert(key, payload);
+        }
 
-            bool search(const T& key, P &payload) {
-                return db_->Get(key, payload); 
-            }
+        bool search(const T &key, P &payload)
+        {
+            auto ret = db_->get_payload(key, &payload);
+            return ret;
+        }
 
-            bool erase(const T& key, uint64_t *log_offset = nullptr) {
-                return db_->Delete(key, log_offset);
-            }
+        bool erase(const T &key, uint64_t *log_offset = nullptr)
+        {
+            int num = db_->erase(key, log_offset);
+            if (num > 0)
+                return true;
+            else
+                return false;
+        }
 
-            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                return db_->Update(key, payload, log_offset);
-            }
+        bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
+        {
+            return db_->update(key, payload, log_offset);
+        }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                int scan_size = to_scan;
-                std::vector<std::pair<uint64_t, uint64_t>> res;
-                db_->Scan(key, scan_size, res);
-                assert(scan_size == res.size());
-                for (int i = 0; i < res.size(); i++) {
-                    result[i] = res[i];
-                }
-                return res.size();
-            }
+        int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
+        {
+            auto scan_size = db_->range_scan_by_size(key, static_cast<uint32_t>(to_scan), result);
+            return to_scan;
+        }
 
-            void get_info() {
-                db_->Info();
-            }
+        void get_info() {}
 
-        private:
-            nali::Nali *db_;
+    private:
+        alexol::Alex<T, P, alexol::AlexCompare, std::allocator<std::pair<T, P>>, false> *db_;
+    };
+}
+
+struct NALITreeIndex
+{
+    nali::logdb<size_t, size_t> *map;
+
+    NALITreeIndex(nali::logdb<size_t, size_t> *map) : map(map) {}
+
+    void put(const nap::Slice &key, const nap::Slice &value, bool is_update)
+    {
+        map->insert(*(size_t *)key.data(), *(size_t *)value.data());
+    }
+
+    bool get(const nap::Slice &key, std::string &value)
+    {
+        map->search(*(size_t *)key.data(), *(size_t *)value.data());
+        return true;
+    }
+
+    void del(const nap::Slice &key) {}
+
+    void bulkload(const std::pair<size_t, size_t> values[], int num_keys)
+    {
+        map->bulk_load(values, num_keys);
+    }
+};
+
+class nap_nali_wrapper
+{
+public:
+    nap_nali_wrapper();
+    virtual ~nap_nali_wrapper();
+
+    virtual bool find(size_t key, size_t &value);
+    virtual bool insert(size_t key, size_t value);
+    virtual bool update(size_t key, size_t value);
+    virtual bool remove(size_t key);
+    virtual void bulk_load(const std::pair<size_t, size_t> values[], int num_keys);
+    virtual int scan(size_t key, uint32_t to_scan, std::pair<size_t, size_t> *&values_out);
+    virtual void print_numa_info(bool is_read);
+
+private:
+    nali::logdb<size_t, size_t> *li_;
+    nap::Nap<NALITreeIndex> *tree_ = nullptr;
+    thread_local static bool thread_init;
+};
+
+nap_nali_wrapper::nap_nali_wrapper()
+{
+    init_nap_numa_pool();
+}
+
+void nap_nali_wrapper::bulk_load(const std::pair<size_t, size_t> values[], int num_keys)
+{
+    // nap测试中，先向raw index load部分KV，两边numa都插入一部分KV? 必须要做吗？
+    Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
+    li_ = new nali::logdb<size_t, size_t>(real_db);
+    NALITreeIndex *raw_index = new NALITreeIndex(li_);
+    std::cout << "raw input " << num_keys << " kvs" << std::endl;
+    raw_index->bulkload(values, num_keys);
+    std::cout << "nap warm up..." << std::endl;
+    tree_ = new nap::Nap<NALITreeIndex>(raw_index);
+    // nap测试中，首先进行了一段的warmup:执行get操作
+    for (int i = 0; i < 100000; i++)
+    {
+        std::string str;
+        uint64_t key = random();
+        tree_->get(nap::Slice((char *)(&key), KEY_LEN), str);
+    }
+    std::cout << "nap warm up end" << std::endl;
+    // nap::Topology::reset();
+    tree_->set_sampling_interval(32); // nap默认设置32
+    tree_->set_switch_interval(5);
+    tree_->clear(); // 统计信息
+    std::cout << "nap init end" << std::endl;
+}
+
+nap_nali_wrapper::~nap_nali_wrapper()
+{
+    delete li_;
+    delete tree_;
+}
+
+bool nap_nali_wrapper::find(size_t key, size_t &value)
+{
+    std::string str;
+    tree_->get(nap::Slice((char *)(&key), KEY_LEN), str);
+    memcpy(&value, str.c_str(), 8);
+    return true;
+}
+
+bool nap_nali_wrapper::insert(size_t key, size_t value)
+{
+    tree_->put(nap::Slice((char *)(&key), KEY_LEN), nap::Slice((char *)(&value), VALUE_LEN), false);
+    return true;
+}
+
+bool nap_nali_wrapper::update(size_t key, size_t value)
+{
+    tree_->put(nap::Slice((char *)(&key), KEY_LEN), nap::Slice((char *)(&value), VALUE_LEN), true);
+    return true;
+}
+
+bool nap_nali_wrapper::remove(size_t key)
+{
+    tree_->del(nap::Slice((char *)(&key), KEY_LEN));
+    return true;
+}
+
+int nap_nali_wrapper::scan(size_t key, uint32_t to_scan, std::pair<size_t, size_t> *&values_out)
+{
+    return 0;
+}
+
+void nap_nali_wrapper::print_numa_info(bool is_read)
+{
+    uint64_t local_visit = 0, remote_visit = 0;
+    for (int i = 0; i < nap::kMaxThreadCnt; i++)
+    {
+        int8_t thread_numa_id = numa_map[i];
+        if (is_read)
+        {
+            local_visit += nap::thread_meta_array[i].ff_numa_read[thread_numa_id];
+            remote_visit += nap::thread_meta_array[i].ff_numa_read[1 - thread_numa_id];
+        }
+        else
+        {
+            local_visit += nap::thread_meta_array[i].ff_numa_write[thread_numa_id];
+            remote_visit += nap::thread_meta_array[i].ff_numa_write[1 - thread_numa_id];
+        }
+        memset(nap::thread_meta_array[i].ff_numa_read, 0, sizeof(nap::thread_meta_array[i].ff_numa_read));
+        memset(nap::thread_meta_array[i].ff_numa_write, 0, sizeof(nap::thread_meta_array[i].ff_numa_write));
+    }
+
+    std::cout << "local visit: " << local_visit << std::endl;
+    std::cout << "remote visit: " << remote_visit << std::endl;
+}
+
+namespace nali
+{
+    template <class T, class P>
+    class nalidb : public Tree<T, P>
+    {
+    public:
+        typedef std::pair<T, P> V;
+        nalidb()
+        {
+            db_ = new nali::Nali();
+            db_->Init();
+        }
+
+        ~nalidb()
+        {
+            delete db_;
+        }
+
+        void bulk_load(const V values[], int num_keys)
+        {
+            // db_->bulk_load(values, num_keys);
+            for (int i = 0; i < num_keys; i++)
+            {
+                db_->Put(values[i].first, values[i].second);
+            }
+        }
+
+        bool insert(const T &key, const P &payload)
+        {
+            return db_->Put(key, payload);
+        }
+
+        bool search(const T &key, P &payload)
+        {
+            return db_->Get(key, payload);
+        }
+
+        bool erase(const T &key, uint64_t *log_offset = nullptr)
+        {
+            return db_->Delete(key, log_offset);
+        }
+
+        bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
+        {
+            return db_->Update(key, payload, log_offset);
+        }
+
+        int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
+        {
+            int scan_size = to_scan;
+            std::vector<std::pair<uint64_t, uint64_t>> res;
+            db_->Scan(key, scan_size, res);
+            assert(scan_size == res.size());
+            for (int i = 0; i < res.size(); i++)
+            {
+                result[i] = res[i];
+            }
+            return res.size();
+        }
+
+        void get_info()
+        {
+            db_->Info();
+        }
+
+    private:
+        nali::Nali *db_;
     };
 
-    template <class T, class P>
-    class alexoldb : public Tree<T, P> {
-        public:
-            typedef std::pair<T, P> V;
-            alexoldb() {
-                db_ = new alexol::Alex<T, P>();
-                db_->set_max_model_node_size(1 << 24);
-                db_->set_max_data_node_size(1 << 17);
-            }
+    // template <class T, class P>
+    // class alexoldb : public Tree<T, P>
+    // {
+    // public:
+    //     typedef std::pair<T, P> V;
+    //     alexoldb()
+    //     {
+    //         db_ = new alexol::Alex<T, P>();
+    //         db_->set_max_model_node_size(1 << 24);
+    //         db_->set_max_data_node_size(1 << 17);
+    //     }
 
-            ~alexoldb() {
-                delete db_;
-            }
+    //     ~alexoldb()
+    //     {
+    //         delete db_;
+    //     }
 
-            void bulk_load(const V values[], int num_keys) {
-                db_->bulk_load(values, num_keys);
-            }
+    //     void bulk_load(const V values[], int num_keys)
+    //     {
+    //         db_->bulk_load(values, num_keys);
+    //     }
 
-            bool insert(const T& key, const P& payload) {
-                return db_->insert(key, payload);
-            }
+    //     bool insert(const T &key, const P &payload)
+    //     {
+    //         return db_->insert(key, payload);
+    //     }
 
-            bool search(const T& key, P &payload) {
-                auto ret = db_->get_payload(key, &payload);
-                return ret;
-            }
+    //     bool search(const T &key, P &payload)
+    //     {
+    //         auto ret = db_->get_payload(key, &payload);
+    //         return ret;
+    //     }
 
-            bool erase(const T& key, uint64_t *log_offset = nullptr) {
-                int num = db_->erase(key, log_offset);
-                if(num > 0) return true; 
-                else return false;
-            }
+    //     bool erase(const T &key, uint64_t *log_offset = nullptr)
+    //     {
+    //         int num = db_->erase(key, log_offset);
+    //         if (num > 0)
+    //             return true;
+    //         else
+    //             return false;
+    //     }
 
-            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                return db_->update(key, payload, log_offset);
-            }
+    //     bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
+    //     {
+    //         return db_->update(key, payload, log_offset);
+    //     }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                auto scan_size = db_->range_scan_by_size(key, static_cast<uint32_t>(to_scan), result);
-                return to_scan;
-            }
+    //     int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
+    //     {
+    //         auto scan_size = db_->range_scan_by_size(key, static_cast<uint32_t>(to_scan), result);
+    //         return to_scan;
+    //     }
 
-            void get_info() {}
+    //     void get_info() {}
 
-        private:
-            alexol::Alex <T, P, alexol::AlexCompare, std::allocator<std::pair <T, P>>, false> *db_;
-    };
+    // private:
+    //     alexol::Alex<T, P, alexol::AlexCompare, std::allocator<std::pair<T, P>>, false> *db_;
+    // };
 
     // template <class T, class P>
     // class utree_db : public Tree<T, P> {
@@ -309,53 +531,120 @@ namespace nali {
     // };
 
     template <class T, class P>
-    class napfastfair_db : public Tree<T, P> {
-        public:
-            typedef std::pair<T, P> V;
-            napfastfair_db() {
-                init_numa_map();
-                db_ = new nap_fastfair_wrapper();
-            }
+    class napfastfair_db : public Tree<T, P>
+    {
+    public:
+        typedef std::pair<T, P> V;
+        napfastfair_db()
+        {
+            init_numa_map();
+            db_ = new nap_fastfair_wrapper();
+        }
 
-            ~napfastfair_db() {
-                delete db_;
-            }
+        ~napfastfair_db()
+        {
+            delete db_;
+        }
 
-            void bulk_load(const V values[], int num_keys) {
-                for (int i = 0; i < num_keys; i++) {
-                    if ((i + 1) % 100000 == 0) {
-                        std::cout << "Operate: " << i+1<< std::endl; 
-                    }
-                    db_->insert(values[i].first, values[i].second);
+        void bulk_load(const V values[], int num_keys)
+        {
+            for (int i = 0; i < num_keys; i++)
+            {
+                if ((i + 1) % 100000 == 0)
+                {
+                    std::cout << "Operate: " << i + 1 << std::endl;
                 }
+                db_->insert(values[i].first, values[i].second);
             }
+        }
 
-            bool insert(const T& key, const P& payload) {
-                return db_->insert(key, payload);
-            }
+        bool insert(const T &key, const P &payload)
+        {
+            return db_->insert(key, payload);
+        }
 
-            bool search(const T& key, P &payload) {
-                return db_->find(key, payload);
-            }
+        bool search(const T &key, P &payload)
+        {
+            return db_->find(key, payload);
+        }
 
-            bool erase(const T& key, uint64_t *log_offset = nullptr) {
-                return db_->remove(key);
-            }
+        bool erase(const T &key, uint64_t *log_offset = nullptr)
+        {
+            return db_->remove(key);
+        }
 
-            bool update(const T& key, const P& payload, uint64_t *log_offset = nullptr) {
-                return db_->update(key, payload);
-            }
+        bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
+        {
+            return db_->update(key, payload);
+        }
 
-            int range_scan_by_size(const T& key, uint32_t to_scan, V* &result = nullptr) {
-                return db_->scan(key, to_scan, result);
-            }
+        int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
+        {
+            return db_->scan(key, to_scan, result);
+        }
 
-            void get_info() {
-                db_->print_numa_info(true);
-            }
+        void get_info()
+        {
+            db_->print_numa_info(true);
+        }
 
-        private:
-            nap_fastfair_wrapper *db_;
+    private:
+        nap_fastfair_wrapper *db_;
+    };
+
+    template <class T, class P> // nap + fastfair => nap + nali
+    class napnali_db : public Tree<T, P>
+    {
+    public:
+        typedef std::pair<T, P> V;
+        napnali_db()
+        {
+            init_numa_map();
+            db_ = new nap_nali_wrapper();
+        }
+
+        ~napnali_db()
+        {
+            delete db_;
+        }
+
+        void bulk_load(const V values[], int num_keys)
+        {
+            db_->bulk_load(values, num_keys);
+        }
+
+        bool insert(const T &key, const P &payload)
+        {
+            return db_->insert(key, payload);
+        }
+
+        bool search(const T &key, P &payload)
+        {
+            return db_->find(key, payload);
+        }
+
+        bool erase(const T &key, uint64_t *log_offset = nullptr)
+        {
+            return db_->remove(key);
+        }
+
+        bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
+        {
+            return db_->update(key, payload);
+        }
+
+        int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
+        {
+            return db_->scan(key, to_scan, result);
+        }
+
+        void get_info()
+        {
+            db_->print_numa_info(true);
+        }
+
+    private:
+        nap_nali_wrapper *db_;
     };
 
     // template <class T, class P>
@@ -416,4 +705,3 @@ namespace nali {
     //         conff::btree *db_;
     // };
 }
-

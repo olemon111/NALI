@@ -16,10 +16,10 @@ function Run() {
     Loadname="ycsb-200m"
     loadnum=190000000
     date | tee multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
-    # gdb --args \
     # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
     # numactl --cpunodebind=1 --membind=1 \
     # LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes \
+    # gdb --args \
     timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
         --thread-nums $thread --bgthreads $bgthreads --hashshards $hashshards | tee -a multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
@@ -74,6 +74,7 @@ function Run() {
 
 loadnum=400000000
 opnum=10000000
+opnum=0
 scansize=4000000
 dbname="alexol"
 bgthreads=0
@@ -103,10 +104,11 @@ hashshards=128
 function run_all() {
     dbs="alexol"
     # dbs="nap"
+    # dbs="nap-nali"
     for dbname in $dbs; do
         for bgthreads in 2 # 4 8 16
         do
-            for thread in 1
+            for thread in {1..16}
             do
                 Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards
             done
