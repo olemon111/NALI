@@ -15,7 +15,7 @@
 #include "../src/nali_kvlog.h"
 #include "new_cache.h"
 
-#define USE_CACHE
+// #define USE_CACHE
 // #define SCAN_USE_THREAD_POOL
 extern size_t PER_THREAD_POOL_THREADS;
 

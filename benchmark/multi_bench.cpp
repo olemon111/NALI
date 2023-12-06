@@ -247,7 +247,7 @@ int main(int argc, char *argv[]) {
     numa1_thread_num = total_thread_num;
     total_thread_num *= 2;
   }
-  dbName = "nap";
+  // dbName = "nap";
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
   if (dbName == "nap") {
