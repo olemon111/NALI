@@ -41,6 +41,15 @@ function get_recovery_time()
     cat $1 | grep "Recovery" | awk '{print $3}'
 }
 
+function get_multi_load()
+{
+    if cat $1 | grep -q "Load" ; then
+        cat $1 | grep "Load" | awk '{print $7/1e+06}'
+    else
+        echo "0"
+    fi
+}
+
 function get_multi_put()
 {
     if cat $1 | grep -q "Put" ; then
@@ -49,6 +58,7 @@ function get_multi_put()
         echo "0"
     fi
 }
+
 function get_multi_get()
 {
     if cat $1 | grep -q "Get" ; then
@@ -149,6 +159,8 @@ function get_nap_update_iops()
 }
 
 dbname=nap
+dbname=alexol
+dbname=btreeolc
 workload=ycsb-200m
 # workload=longlat-200m
 # workload=longtitudes-200m
@@ -156,11 +168,13 @@ workload=ycsb-200m
 
 # logfile="microbench-$dbname-$workload.txt"
 
+# for thread in 16
 for thread in {1..16}
 do
     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128.txt"
     # get_numa0_read $logfile
     # get_numa0_write $logfile
+    # get_multi_load $logfile
     # get_multi_put $logfile
     # get_multi_get $logfile
     # get_multi_scan $logfile

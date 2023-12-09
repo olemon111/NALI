@@ -70,6 +70,7 @@ include_directories(third/nap/src)
 # include_directories(third/dptree/misc)
 # include_directories(third/dptree/misc/ARTOLC)
 # include_directories(third/dptree/src)
+include_directories(third/btreeolc)
 
 list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
