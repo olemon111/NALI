@@ -210,6 +210,7 @@ int main(int argc, char *argv[])
       {"valuesize", required_argument, NULL, 0},
       {"bgthreads", required_argument, NULL, 0},
       {"hashshards", required_argument, NULL, 0},
+      {"zipfan-theta", required_argument, NULL, 0},
       {"help", no_argument, NULL, 'h'},
       {NULL, 0, NULL, 0}};
 
@@ -219,6 +220,7 @@ int main(int argc, char *argv[])
   std::string load_file = "";
   int total_thread_num = 16;
   int recovery_threads_num = 0;
+  float zipfan_theta = 0.99;
   while ((c = getopt_long(argc, argv, "s:dh", opts, &opt_idx)) != -1)
   {
     switch (c)
@@ -257,6 +259,9 @@ int main(int argc, char *argv[])
         NALI_VERSION_SHARDS = atoi(optarg);
         break;
       case 10:
+        zipfan_theta = atof(optarg);
+        break;
+      case 11:
         show_help(argv[0]);
         return 0;
       default:
@@ -322,6 +327,7 @@ int main(int argc, char *argv[])
   std::cout << "UPDATE_SIZE:           " << UPDATE_SIZE << std::endl;
   std::cout << "DELETE_SIZE:           " << DELETE_SIZE << std::endl;
   std::cout << "ZIPFAN_SIZE:           " << ZIPFAN_SIZE << std::endl;
+  std::cout << "ZIPFAN_THETA:          " << zipfan_theta << std::endl;
   std::cout << "DB  name:              " << dbName << std::endl;
   std::cout << "Workload:              " << load_file << std::endl;
 #ifdef VARVALUE
@@ -791,8 +797,8 @@ int main(int argc, char *argv[])
 
 #ifdef ZIPFAN_TEST
   {
-    // std::vector<float> zipfan_params = {0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
-    std::vector<float> zipfan_params = {0.99};
+    std::vector<float> zipfan_params = {zipfan_theta}; // 0.5, 0.6, 0.7, 0.8, 0.9, 0.99
+
     bool is_read = true;
 
   zipfan_test:
