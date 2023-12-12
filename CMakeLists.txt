@@ -72,7 +72,20 @@ include_directories(third/nap/src)
 # include_directories(third/dptree/src)
 include_directories(third/btreeolc)
 
-list(APPEND libs_to_link pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
+set(CLHT_SRC
+    src/clht/clht_gc.cc
+    src/clht/clht_lb_res.cc
+    src/clht/clht_lf_res.cc
+    src/clht/measurements.cc
+    src/clht/ssmem.cc
+)
+
+add_library(clht SHARED ${CLHT_SRC})
+
+add_compile_definitions(CORES_PER_SOCKET=16) # for clht
+
+
+list(APPEND libs_to_link clht pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
 link_libraries(
     # ${PROJECT_SOURCE_DIR}/third/utree/build/libnali_utree.so

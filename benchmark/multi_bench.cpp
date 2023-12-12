@@ -29,7 +29,7 @@ uint64_t hit_cnt[64];
 
 // #define STATISTIC_PMEM_INFO
 
-#define NAP_OURS_CMP_TEST
+// #define NAP_OURS_CMP_TEST
 bool zipfan_numa_test_flag = false;
 
 #define PERF_TEST
@@ -295,7 +295,13 @@ int main(int argc, char *argv[])
     numa1_thread_num = total_thread_num;
     total_thread_num *= 2;
   }
-  // dbName = "nap";
+  if (dbName == "btreeolc")
+  {
+    BULKLOAD_SIZE = 10000000;
+    PUT_SIZE = 0;
+    ZIPFAN_SIZE = 10000000;
+    MIX_SIZE = 0;
+  }
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
   if (dbName == "nap" || dbName == "btreeolc")

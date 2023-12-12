@@ -168,10 +168,15 @@ workload=ycsb-200m
 
 # logfile="microbench-$dbname-$workload.txt"
 
-# for thread in 16
-for thread in {1..16}
+for thread in 16
+# for thread in {1..16}
 do
-    logfile="multi-$dbname-$workload-th$thread-s8-b2-h128.txt"
+    for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+    do 
+        logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+        get_zipfan_get $logfile "zipfan$theta"
+        # get_zipfan_update $logfile "zipfan$theta"
+    done
     # get_numa0_read $logfile
     # get_numa0_write $logfile
     # get_multi_load $logfile
