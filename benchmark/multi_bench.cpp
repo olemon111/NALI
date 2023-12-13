@@ -297,11 +297,9 @@ int main(int argc, char *argv[])
   }
   if (dbName == "btreeolc")
   {
-    BULKLOAD_SIZE = 10000000;
-    PUT_SIZE = 0;
-    ZIPFAN_SIZE = 10000000;
-    MIX_SIZE = 0;
+    BULKLOAD_SIZE = 0;
   }
+  LOAD_SIZE -= BULKLOAD_SIZE;
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
   if (dbName == "nap" || dbName == "btreeolc")
