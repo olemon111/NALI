@@ -42,7 +42,7 @@ static bool FileExists(const char *pool_path) {
 
 #define LOG(msg) std::cout << msg << "\n"
 
-#define CAS(_p, _u, _v)                                             \
+#define util_CAS(_p, _u, _v)                                             \
   (__atomic_compare_exchange_n(_p, _u, _v, false, __ATOMIC_ACQUIRE, \
                                __ATOMIC_ACQUIRE))
 
@@ -98,7 +98,7 @@ inline bool cas_multiple_type(T *src, T* old_src, T new_value){
   uint64_t* uint_src = reinterpret_cast<uint64_t*>(src);
   uint64_t* uint_old_src = reinterpret_cast<uint64_t*>(old_src);
   uint64_t uint_new_value = *(reinterpret_cast<uint64_t*>(&new_value));
-  return CAS(uint_src, uint_old_src, uint_new_value);
+  return util_CAS(uint_src, uint_old_src, uint_new_value);
 }
 
 template<class T>
@@ -126,7 +126,7 @@ inline T load_multiple_type(T *src){
  */
 static inline
 void clwb(void * addr)
-{ asm volatile("clwb %0": :"m"(*((char *)addr))); } 
+{ asm volatile("clwb %0": :"m"(*((char *)addr))); }
 
 /**
  * flush [start, end]
@@ -149,7 +149,7 @@ void clwb2(void *start, void *end)
  */
 static inline
 void clwbmore(void *start, void *end)
-{ 
+{
   unsigned long long start_line= GET_LINE(start);
   unsigned long long end_line= GET_LINE(end);
   do {

@@ -160,7 +160,8 @@ function get_nap_update_iops()
 
 dbname=nap
 dbname=alexol
-# dbname=btreeolc
+dbname=btreeolc
+dbname=viper
 workload=ycsb-200m
 # workload=longlat-200m
 # workload=longtitudes-200m
@@ -168,55 +169,7 @@ workload=ycsb-200m
 
 # logfile="microbench-$dbname-$workload.txt"
 
-# for thread in 16
-# # for thread in {1..16}
-# do
-#     for theta in 0.5 0.6 0.7 0.8 0.9 0.99
-#     do 
-#         logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-#         get_zipfan_get $logfile "zipfan$theta"
-#     done
-#     # get_numa0_read $logfile
-#     # get_numa0_write $logfile
-#     # get_multi_load $logfile
-#     # get_multi_put $logfile
-#     # get_multi_get $logfile
-#     # get_multi_scan $logfile
-#     # get_multi_delete $logfile
-#     # get_multi_update $logfile
-
-#     # get_mix_op $logfile "Mixupdate0.05"
-#     # get_mix_op $logfile "Mixupdate0.2"
-#     # get_mix_op $logfile "Mixupdate0.5"
-#     # get_mix_op $logfile "Mixupdate0.8"
-#     # get_mix_op $logfile "Mixupdate0.95"
-
-#     # get_mix_op $logfile "Mixinsert0.05"
-#     # get_mix_op $logfile "Mixinsert0.2"
-#     # get_mix_op $logfile "Mixinsert0.5"
-#     # get_mix_op $logfile "Mixinsert0.8"
-#     # get_mix_op $logfile "Mixinsert0.95"
-
-#     # get_zipfan_update $logfile "zipfan0.99"
-#     # get_zipfan_update $logfile "zipfan0.9"
-#     # get_zipfan_update $logfile "zipfan0.8"
-#     # get_zipfan_update $logfile "zipfan0.7"
-#     # get_zipfan_update $logfile "zipfan0.6"
-#     # get_zipfan_update $logfile "zipfan0.5"
-
-#     # get_zipfan_get $logfile "zipfan0.99"
-#     # get_zipfan_get $logfile "zipfan0.9"
-#     # get_zipfan_get $logfile "zipfan0.8"
-#     # get_zipfan_get $logfile "zipfan0.7"
-#     # get_zipfan_get $logfile "zipfan0.6"
-#     # get_zipfan_get $logfile "zipfan0.5"
-
-#     # get_recovery_time $logfile
-# done
-
-
 for thread in 16
-# for thread in {1..16}
 do
     for theta in 0.5 0.6 0.7 0.8 0.9 0.99
     do 
@@ -225,10 +178,9 @@ do
     done
 done
 
-echo "update"
+echo -e "\n\nupdate\n"
 
 for thread in 16
-# for thread in {1..16}
 do
     for theta in 0.5 0.6 0.7 0.8 0.9 0.99
     do 
@@ -236,3 +188,27 @@ do
         get_zipfan_update $logfile "zipfan$theta"
     done
 done
+
+# theta=0
+
+# for thread in {1..16}
+# do
+#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+#     get_multi_load $logfile
+# done
+
+# echo -e "\n\nget"
+
+# for thread in {1..16}
+# do
+#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+#     get_multi_get $logfile
+# done
+
+# echo -e "\n\nupdate"
+
+# for thread in {1..16}
+# do
+#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+#     get_multi_update $logfile
+# done

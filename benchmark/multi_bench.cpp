@@ -33,7 +33,7 @@ uint64_t hit_cnt[64];
 bool zipfan_numa_test_flag = false;
 
 #define PERF_TEST
-#define USE_BULKLOAD
+// #define USE_BULKLOAD
 
 // #define ONLY_INSERT
 #define LOAD_PHASE
@@ -89,6 +89,9 @@ size_t DELETE_SIZE = 10000000;
 size_t ZIPFAN_SIZE = 20000000;
 size_t MIX_SIZE = 10000000;
 int Loads_type = 3;
+
+const size_t initial_size = 1024UL * 1024UL * 1024UL * 64UL;
+auto viper_ = viper::Viper<size_t, size_t>::create("/mnt/pmem0/zzy/viper", initial_size);
 
 #ifdef STATISTIC_PMEM_INFO
 #include "nvdimm_counter.h"
@@ -279,11 +282,14 @@ int main(int argc, char *argv[])
       abort();
     }
   }
-  // 测1->32线程
-  // if (total_thread_num <= 16) {
+  // // 测1->32线程
+  // if (total_thread_num <= 16)
+  // {
   //   numa0_thread_num = total_thread_num;
   //   numa1_thread_num = 0;
-  // } else {
+  // }
+  // else
+  // {
   //   numa0_thread_num = 16;
   //   numa1_thread_num = total_thread_num - numa0_thread_num;
   // }
@@ -295,16 +301,15 @@ int main(int argc, char *argv[])
     numa1_thread_num = total_thread_num;
     total_thread_num *= 2;
   }
-  if (dbName == "btreeolc")
+  if (dbName == "btreeolc" || "viper")
   {
     BULKLOAD_SIZE = 0;
   }
-  LOAD_SIZE -= BULKLOAD_SIZE;
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
-  if (dbName == "nap" || dbName == "btreeolc")
+  if (dbName == "nap" || dbName == "btreeolc" || dbName == "viper")
   {
-    BULKLOAD_SIZE = 1;
+    BULKLOAD_SIZE = 0;
     LOAD_SIZE = 0;
     PUT_SIZE = 16000000;
     ZIPFAN_SIZE = 64000000;
@@ -413,16 +418,20 @@ int main(int argc, char *argv[])
   std::cout << "before newdb, dram space use: " << init_dram_space_use / 1024.0 / 1024.0 << " GB" << std::endl;
 
   Tree<KEY_TYPE, VALUE_TYPE> *db = nullptr;
-  if (dbName == "alexol")
-  {
-    Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
-    db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db);
-  }
-  else if (dbName == "btreeolc")
-  {
-    Tree<size_t, uint64_t> *real_db = new nali::btreeolcdb<size_t, uint64_t>();
-    db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db);
-  }
+  // if (dbName == "alexol")
+  // {
+  //   Tree<size_t, uint64_t> *real_db = new nali::alexoldb<size_t, uint64_t>();
+  //   db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db);
+  // }
+  // else if (dbName == "btreeolc")
+  // {
+  //   Tree<size_t, uint64_t> *real_db = new nali::btreeolcdb<size_t, uint64_t>();
+  //   db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db);
+  // }
+  // if (dbName == "viper")
+  // {
+  // db = new nali::viperdb<KEY_TYPE, VALUE_TYPE>();
+  // }
   // else if (dbName == "nali") {
   //   real_db = new nali::nalidb<size_t, uint64_t>();
   //   db = new nali::logdb<KEY_TYPE, VALUE_TYPE>(real_db);
@@ -439,15 +448,15 @@ int main(int argc, char *argv[])
   // else if (dbName == "dptree") {
   //   db = new nali::dptree_db<KEY_TYPE, VALUE_TYPE>(total_thread_num);
   // }
-  else if (dbName == "nap")
-  {
-    db = new nali::napfastfair_db<KEY_TYPE, VALUE_TYPE>();
-  }
-  else
-  {
-    LOG_INFO("not defined db: %s", dbName.c_str());
-    assert(false);
-  }
+  // else if (dbName == "nap")
+  // {
+  //   db = new nali::napfastfair_db<KEY_TYPE, VALUE_TYPE>();
+  // }
+  // else
+  // {
+  //   LOG_INFO("not defined db: %s", dbName.c_str());
+  //   assert(false);
+  // }
 
 #ifdef USE_BULKLOAD
   // alexol/apex must bulkload 10M/1M sorted kv
@@ -525,6 +534,7 @@ int main(int argc, char *argv[])
 #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
 #endif
+        auto client = viper_->get_client(); // allocate one client for each thread
         for (size_t j = 0; j < size; ++j) {
 #ifdef VARVALUE
 #ifndef PERF_TEST
@@ -532,12 +542,13 @@ int main(int argc, char *argv[])
 #endif
           bool ret = db->insert(data_base[start_pos+j], value);
 #else
-          bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          // bool ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          bool ret = client.put(data_base[start_pos+j], data_base[start_pos+j]);
 #endif
-          if(idx == 0 && (j + 1) % 10000000 == 0) {
-            std::cout << "Operate: " << j + 1 << std::endl;
-            std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
-          }
+          // if(idx == 0 && (j + 1) % 10000000 == 0) {
+          //   std::cout << "Operate: " << j + 1 << std::endl;
+          //   std::cout << "dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 /1024.0  << " GB" << std::endl;
+          // }
         } });
     }
 
@@ -589,6 +600,7 @@ int main(int argc, char *argv[])
 #ifdef VARVALUE
         std::string value(VALUE_LENGTH, '1');
 #endif
+        auto client = viper_->get_client();
         for (size_t j = 0; j < size; ++j) {
 #ifdef VARVALUE
 #ifndef PERF_TEST
@@ -596,7 +608,8 @@ int main(int argc, char *argv[])
 #endif
           auto ret = db->insert(data_base[start_pos+j], value);
 #else
-          auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
+          auto ret = client.put(data_base[start_pos+j], data_base[start_pos+j]);
+          // auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
 #endif
           // if (ret != 1) {
           //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
@@ -673,6 +686,8 @@ int main(int argc, char *argv[])
 #else
             size_t value;
 #endif
+          auto client = viper_->get_read_only_client();
+          // auto client = viper_->get_client();
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
 #ifdef VARVALUE
@@ -684,7 +699,8 @@ int main(int argc, char *argv[])
                 }
 #endif
 #else
-                auto ret = db->search(data_base[start_pos+j], value);
+                auto ret = client.get(data_base[start_pos+j], &value);
+              // auto ret = db->search(data_base[start_pos+j], value);
 #ifndef PERF_TEST
                 if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
                   wrong_get++;
@@ -762,6 +778,7 @@ int main(int argc, char *argv[])
             size_t value;
 #endif
           size_t t_v = 0x19990627UL;
+          auto client = viper_->get_client();
           for (size_t j = 0; j < size; ++j) {
 #ifdef VARVALUE
 #ifndef PERF_TEST
@@ -769,7 +786,8 @@ int main(int argc, char *argv[])
 #endif
               auto ret = db->update(data_base[start_pos+j], value);
 #else
-              auto ret = db->update(data_base[start_pos+j], t_v);
+            // auto ret = db->update(data_base[start_pos+j], t_v);
+            auto ret = client.put(data_base[start_pos+j], t_v);
 #endif
             
             if(idx == 0 && (j + 1) % 100000 == 0) {
@@ -804,6 +822,9 @@ int main(int argc, char *argv[])
     std::vector<float> zipfan_params = {zipfan_theta}; // 0.5, 0.6, 0.7, 0.8, 0.9, 0.99
 
     bool is_read = true;
+#ifdef ZIPFAN_UPDATE_TEST
+    is_read = false;
+#endif
 
   zipfan_test:
     LOG_INFO(" @@@@@@@@@@@@@ zipfan update/get @@@@@@@@@@@@@@@");
@@ -850,6 +871,7 @@ int main(int argc, char *argv[])
 #else
               size_t value;
 #endif
+            auto client = viper_->get_client(); // allocate one client for each thread
             size_t t_v = 0x19990627UL;
             for (int times = 0; times < 1; times++) {
               for (size_t j = 0; j < size; ++j) {
@@ -861,7 +883,8 @@ int main(int argc, char *argv[])
 #endif
                     ret = db->update(data_base[test_union[start_pos+j]], value);
 #else
-                    ret = db->update(data_base[test_union[start_pos+j]], t_v);
+                    // ret = db->update(data_base[test_union[start_pos+j]], t_v);
+                    ret = client.put(data_base[test_union[start_pos+j]], t_v);
 #endif
                 } else {
 #ifdef VARVALUE
@@ -873,7 +896,8 @@ int main(int argc, char *argv[])
                     }
 #endif
 #else
-                    ret = db->search(data_base[test_union[start_pos+j]], value);
+                    // ret = db->search(data_base[test_union[start_pos+j]], value);
+                    ret = client.get(data_base[test_union[start_pos+j]], &value);
 #ifndef PERF_TEST
                     if (!ret || (value != data_base[test_union[start_pos+j]] && value != 0x19990627UL)) {
                       wrong_get++;

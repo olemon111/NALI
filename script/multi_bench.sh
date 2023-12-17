@@ -16,6 +16,7 @@ function Run() {
     rm -rf /mnt/pmem1/zzy/*
     Loadname="ycsb-200m"
     loadnum=190000000 # alexol bulk 10000000
+    # loadnum=200000000
     date | tee multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}-zt${theta}.txt
     # gdb --args \
     # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
@@ -25,12 +26,13 @@ function Run() {
         --loadstype 3 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
         --thread-nums $thread --bgthreads $bgthreads --hashshards $hashshards --zipfan-theta ${theta} | tee -a multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}-zt${theta}.txt
     echo "----------------"
-    sleep 5
+    sleep 10
 
     # rm -rf /mnt/pmem0/zzy/*
     # rm -rf /mnt/pmem1/zzy/*
     # Loadname="longlat-200m"
     # loadnum=190000000
+    # # loadnum=200000000
     # date | tee multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}-zt${theta}.txt
     # # gdb --args \
     # # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
@@ -103,16 +105,17 @@ theta=0.99
 # alexol var hashshards 
 function run_all() {
     dbs="alexol"
-    # dbs="btreeolc"
-    # dbs="nap"
+    dbs="btreeolc"
+    dbs="nap"
+    dbs="viper"
     for dbname in $dbs; do
         for bgthreads in 2 # 4 8 16
         do
             for thread in 16
             # for thread in {1..16}
             do
-                # for theta in 0.99
-                for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+                for theta in 0.5 0.7 0.8 0.9
+                # for theta in 0.5 0.6 0.7 0.8 0.9 0.99
                 do
                     Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards $theta
                 done
@@ -120,15 +123,5 @@ function run_all() {
         done
     done
 }
-
-# function run_all() {
-#     dbs="alexol"
-#     for dbname in $dbs; do
-#         for thread in 16
-#         do
-#             Run $dbname $loadnum $opnum $scansize $thread $valsize
-#         done
-#     done
-# }
 
 run_all $dbname $loadnum $opnum $scansize $thread
