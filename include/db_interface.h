@@ -12,7 +12,7 @@
 // #include "../third/dptree/dptree_wrapper.hpp"
 // #include "../third/nap/include/nap_wrapper.h"
 // #include "../third/btreeolc/src/BTreeOLC_child_layout.h"
-#include "viper/viper.hpp"
+#include "../third/viper/viper.hpp"
 // #include "../third/fastfair/con_fastfair.h"
 #include "tbb/tbb.h"
 #include <utility>
@@ -22,90 +22,6 @@
 
 namespace nali
 {
-    // std::unique_ptr<viper::Viper<size_t, size_t>> viper_;
-    // std::unordered_map<int, viper::Viper<size_t, size_t>::Client> client_map_;
-    // std::mutex mu;
-
-    // template <class T, class P>
-    // class viperdb : public Tree<T, P>
-    // {
-    // public:
-    //     typedef std::pair<T, P> V;
-    //     viperdb()
-    //     {
-    //         if (viper_ == nullptr)
-    //         {
-    //             const size_t initial_size = 1024UL * 1024UL * 1024UL * 64UL;
-    //             viper_ = viper::Viper<T, P>::create("/mnt/pmem0/zzy/viper", initial_size);
-    //         }
-    //     }
-    //     ~viperdb()
-    //     {
-    //         if (viper_ != nullptr)
-    //         {
-    //             viper_.release();
-    //         }
-    //     }
-
-    //     void bulk_load(const V values[], int num_keys)
-    //     {
-    //         for (int i = 0; i < num_keys; i++)
-    //         {
-    //             insert(values[i].first, values[i].second);
-    //         }
-    //     }
-
-    //     bool insert(const T &key, const P &payload)
-    //     {
-    //         int tid = syscall(SYS_gettid);
-    //         mu.lock();
-    //         auto client = client_map_.find(tid);
-    //         if (client == client_map_.end())
-    //         {
-    //             client_map_.insert({tid, viper_->get_client()});
-    //             client = client_map_.find(tid);
-    //         }
-    //         mu.unlock();
-    //         client->second.put(key, payload);
-    //         return true;
-    //     }
-
-    //     bool search(const T &key, P &payload)
-    //     {
-    //         int tid = syscall(SYS_gettid);
-    //         mu.lock();
-    //         auto client = client_map_.find(tid);
-    //         if (client == client_map_.end())
-    //         {
-    //             client_map_.insert({tid, viper_->get_client()});
-    //             client = client_map_.find(tid);
-    //         }
-    //         mu.unlock();
-    //         return client->second.get(key, &payload);
-    //     }
-
-    //     bool erase(const T &key, uint64_t *log_offset = nullptr)
-    //     {
-    //         return true;
-    //     }
-
-    //     bool update(const T &key, const P &payload, uint64_t *log_offset = nullptr)
-    //     {
-    //         return true;
-    //     }
-
-    //     int range_scan_by_size(const T &key, uint32_t to_scan, V *&result = nullptr)
-    //     {
-    //         return 0;
-    //     }
-
-    //     void get_info()
-    //     {
-    //     }
-
-    // private:
-    // };
-
     // template <class T, class P>
     // class nalidb : public Tree<T, P>
     // {

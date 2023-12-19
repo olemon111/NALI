@@ -20,16 +20,6 @@ add_definitions(-DNDEBUG)
 add_definitions(-DPMEM)
 add_definitions(-DPMDK)
 
-include(FetchContent)
-
-FetchContent_Declare(
-    viper
-    GIT_REPOSITORY https://github.com/hpides/viper.git
-)
-FetchContent_MakeAvailable(viper)
-
-# ... other CMake stuff
-
 # message(STATUS "Persistence support: PMDK")
 
 # ##################### PMDK ####################
@@ -96,9 +86,7 @@ add_library(clht SHARED ${CLHT_SRC})
 
 add_compile_definitions(CORES_PER_SOCKET=16) # for clht
 
-# Link Viper to get the transitive dependencies
-# target_link_libraries(your-target viper)
-list(APPEND libs_to_link clht pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc viper)
+list(APPEND libs_to_link clht pmemobj pmem tbb papi tcmalloc_minimal pthread ipmctl numa jemalloc)
 
 link_libraries(
 

@@ -114,7 +114,7 @@ function run_all() {
             for thread in 16
             # for thread in {1..16}
             do
-                for theta in 0.5 0.7 0.8 0.9
+                for theta in 0.5
                 # for theta in 0.5 0.6 0.7 0.8 0.9 0.99
                 do
                     Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards $theta
