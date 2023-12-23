@@ -97,8 +97,8 @@ function get_multi_update()
 
 function get_mix_op()
 {
-    if cat $1 | grep -q $2 ; then
-        cat $1 | grep -w $2 | awk '{print $7/1e+06}'
+    if cat $1 | grep -q "Mix$2" ; then
+        cat $1 | grep -w "Mix$2" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -158,57 +158,57 @@ function get_nap_update_iops()
     fi
 }
 
-dbname=nap
-dbname=alexol
-dbname=btreeolc
-dbname=viper
-workload=ycsb-200m
-# workload=longlat-200m
 # workload=longtitudes-200m
 # workload=lognormal-100m
 
-# logfile="microbench-$dbname-$workload.txt"
-
-for thread in 16
-do
-    for theta in 0.5 0.6 0.7 0.8 0.9 0.99
-    do 
-        logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-        get_zipfan_get $logfile "zipfan$theta"
+function get_zipfan_repeat()
+{
+    dbname=$1
+    workload=$2
+    repeat=$3
+    
+    for r in $(seq 1 $repeat)
+    do
+        echo -e "$r===================="
+        # for thread in {1..16}
+        for thread in 16
+        do
+            for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+            do
+                logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta-r$r.txt"
+                # get_zipfan_get $logfile "zipfan$theta"
+                # get_zipfan_update $logfile "zipfan$theta"
+            done
+        done
     done
-done
+}
 
-echo -e "\n\nupdate\n"
-
-for thread in 16
-do
-    for theta in 0.5 0.6 0.7 0.8 0.9 0.99
-    do 
-        logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-        get_zipfan_update $logfile "zipfan$theta"
+function get_repeat()
+{
+    repeat=$1
+    theta=0
+    
+    for r in $(seq 1 $repeat)
+    do
+        echo -e "$r===================="
+        for thread in {1..16}
+        # for thread in 16
+        do
+            logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta-r$r.txt"
+            # get_multi_update $logfile
+            # get_multi_delete $logfile
+            # get_mix_op $logfile "update"
+            get_mix_op $logfile "insert"
+        done
     done
-done
+}
 
-# theta=0
 
-# for thread in {1..16}
-# do
-#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-#     get_multi_load $logfile
-# done
 
-# echo -e "\n\nget"
+dbname=viper
+workload=ycsb-200m
+repeat=20
 
-# for thread in {1..16}
-# do
-#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-#     get_multi_get $logfile
-# done
-
-# echo -e "\n\nupdate"
-
-# for thread in {1..16}
-# do
-#     logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-#     get_multi_update $logfile
-# done
+get_repeat $repeat > ../res-ycsb.txt
+workload=longlat-200m
+get_repeat $repeat > ../res-llt.txt

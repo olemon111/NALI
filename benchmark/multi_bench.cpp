@@ -40,12 +40,12 @@ bool zipfan_numa_test_flag = false;
 #ifndef ONLY_INSERT
 // #define RECOVERY_TEST
 #ifndef RECOVERY_TEST
-#define ZIPFAN_TEST
+// #define ZIPFAN_TEST
 #ifdef ZIPFAN_TEST
 #define ZIPFAN_UPDATE_TEST
 #endif
 // #define MIX_UPDATE_TEST
-// #define MIX_INSERT_TEST
+#define MIX_INSERT_TEST
 // #define GET_TEST
 // #define UPDATE_TEST
 // #define SCAN_TEST
@@ -787,7 +787,8 @@ int main(int argc, char *argv[])
               auto ret = db->update(data_base[start_pos+j], value);
 #else
             // auto ret = db->update(data_base[start_pos+j], t_v);
-            auto ret = client.put(data_base[start_pos+j], t_v);
+            auto update_fn = [&](size_t *value) { *value = t_v; viper::internal::pmem_persist(value, sizeof(value)); };
+            auto ret = client.update(data_base[start_pos+j], update_fn);
 #endif
             
             if(idx == 0 && (j + 1) % 100000 == 0) {
@@ -884,7 +885,9 @@ int main(int argc, char *argv[])
                     ret = db->update(data_base[test_union[start_pos+j]], value);
 #else
                     // ret = db->update(data_base[test_union[start_pos+j]], t_v);
-                    ret = client.put(data_base[test_union[start_pos+j]], t_v);
+                    // ret = client.put(data_base[test_union[start_pos+j]], t_v);
+                    auto update_fn = [&](size_t *value) { *value = t_v; viper::internal::pmem_persist(value, sizeof(value));};
+                    ret = client.update(data_base[test_union[start_pos+j]], update_fn);
 #endif
                 } else {
 #ifdef VARVALUE
@@ -960,7 +963,8 @@ int main(int argc, char *argv[])
 #ifdef MIX_UPDATE_TEST
   {
     size_t MIX_SIZE = 10000000;
-    std::vector<float> update_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
+    std::vector<float> update_ratios = {0.5};
+    // std::vector<float> update_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
     float update_ratio = 0;
 
     LOG_INFO(" @@@@@@@@@@@@@ mixed update/get @@@@@@@@@@@@@@@");
@@ -1006,6 +1010,7 @@ int main(int argc, char *argv[])
             size_t value;
 #endif
           size_t t_v = 0x19990627UL;
+          auto client = viper_->get_client();
           for (int t = 0; t < 1; t++) {
             for (size_t j = 0; j < size; ++j) {
               bool ret;
@@ -1016,7 +1021,9 @@ int main(int argc, char *argv[])
 #endif
                   ret = db->update(data_base[start_pos+j], value);
 #else
-                  ret = db->update(data_base[start_pos+j], t_v);
+                  // ret = db->update(data_base[start_pos+j], t_v);
+                  auto update_fn = [&](size_t *value) { *value = t_v; viper::internal::pmem_persist(value, sizeof(value)); };
+                  ret = client.update(data_base[start_pos+j], update_fn);
 #endif
               } else {
 #ifdef VARVALUE
@@ -1028,7 +1035,8 @@ int main(int argc, char *argv[])
                   }
 #endif
 #else
-                  ret = db->search(data_base[start_pos+j], value);
+                  // ret = db->search(data_base[start_pos+j], value);
+                  ret = client.get(data_base[start_pos+j], &value);
 #ifndef PERF_TEST
                   if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
                     wrong_get++;
@@ -1067,7 +1075,8 @@ int main(int argc, char *argv[])
 
 #ifdef MIX_INSERT_TEST
   {
-    std::vector<float> insert_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
+    std::vector<float> insert_ratios = {0.5};
+    // std::vector<float> insert_ratios = {0.05, 0.2, 0.5, 0.8, 0.95};
     size_t cur_insert_loc = BULKLOAD_SIZE + LOAD_SIZE + PUT_SIZE;
     LOG_INFO(" @@@@@@@@@@@@@ mixed insert/get @@@@@@@@@@@@@@@");
     for (int loop = 0; loop < insert_ratios.size(); loop++)
@@ -1115,6 +1124,7 @@ int main(int argc, char *argv[])
 #else
             size_t value;
 #endif
+          auto client = viper_->get_client();
           for (size_t j = 0; j < size; ++j) {
             bool ret;
             if (op_arr[start_pos+j].first == true) {
@@ -1124,7 +1134,8 @@ int main(int argc, char *argv[])
 #endif
                 ret = db->insert(data_base[op_arr[start_pos+j].second], value);
 #else
-                ret = db->insert(data_base[op_arr[start_pos+j].second], data_base[op_arr[start_pos+j].second]);
+                // ret = db->insert(data_base[op_arr[start_pos+j].second], data_base[op_arr[start_pos+j].second]);
+                ret = client.put(data_base[op_arr[start_pos+j].second], data_base[op_arr[start_pos+j].second]);
 #endif
             } else {
 #ifdef VARVALUE
@@ -1136,7 +1147,8 @@ int main(int argc, char *argv[])
                 }
 #endif
 #else
-                ret = db->search(data_base[op_arr[start_pos+j].second], value);
+                // ret = db->search(data_base[op_arr[start_pos+j].second], value);
+                ret = client.get(data_base[op_arr[start_pos+j].second], &value);
 #ifndef PERF_TEST
                 if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
                   wrong_get++;
@@ -1293,11 +1305,13 @@ int main(int argc, char *argv[])
         size_t start_pos = idx * per_thread_size;
             
         int wrong_get = 0;
+        auto client = viper_->get_client();
         for (int t = 0; t < 1; t++) {
           for (size_t j = 0; j < size; ++j) {
             bool ret;
             size_t value;
-            ret = db->erase(data_base[start_pos+j]);
+            // ret = db->erase(data_base[start_pos+j]);
+            ret = client.remove(data_base[start_pos+j]);
             if(idx == 0 && (j + 1) % 100000 == 0) {
               std::cerr << "Operate: " << j + 1 << '\r'; 
             }
@@ -1324,166 +1338,6 @@ int main(int argc, char *argv[])
               << "iops " << (double)(DELETE_SIZE) / use_seconds << " ." << std::endl;
   }
 #endif
-  // #ifdef STATISTIC_PMEM_USE
-  // std::cout << "before gc, nvm space use: " << pmem_alloc_bytes * 1.0 / 1024.0 / 1024.0 / 1024.0 << " GB" << std::endl;
-  // #endif
-  // do_gc
-  // begin_gc = true;
-  // sleep(5);
-
-  // auto ts = TIME_NOW;
-  // for (int i = 1; i < 200 && gc_complete < PER_THREAD_POOL_THREADS; i++) {
-  //   sleep(1);
-  //   #ifdef STATISTIC_PMEM_USE
-  //   std::cout << "gc_gc_gc, nvm space use: " << pmem_alloc_bytes * 1.0 / 1024.0 / 1024.0 / 1024.0 << " GB" << std::endl;
-  //   #endif
-  // }
-  // auto te = TIME_NOW;
-  // auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  // std::cout << "gc_end, use seconds: " << use_seconds << " s" << std::endl;
-
-  // {
-  //   // Get
-  //   GET_SIZE = 10000000;
-  //   Random get_rnd(DELETE_SIZE, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
-  //   for (size_t i = 0; i < GET_SIZE; ++i) {
-  //     size_t idx = get_rnd.Next();
-  //     std::swap(data_base[i], data_base[idx]);
-  //   }
-
-  //   LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
-
-  //   for (int loop = 0; loop < 1; loop++) {
-  //     std::vector<std::thread> threads;
-  //     std::atomic<uint64_t> thread_idx_count(0);
-  //     size_t per_thread_size = GET_SIZE / total_thread_num;
-
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_start(&nvdimm_counter_begin);
-  //     #endif
-
-  //     auto ts = TIME_NOW;
-  //     for (int i = 0; i < thread_id_arr.size(); ++i) {
-  //         threads.emplace_back([&](){
-  //         size_t idx = thread_idx_count.fetch_add(1);
-  //         global_thread_id = thread_id_arr[idx];
-  //         bindCore(global_thread_id);
-  //         size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
-  //         size_t start_pos = idx * per_thread_size;
-
-  //         int wrong_get = 0;
-  //         #ifdef VARVALUE
-  //           std::string value;
-  //           std::string cmp_value(VALUE_LENGTH, '1');
-  //         #else
-  //           size_t value;
-  //         #endif
-  //         for (int t = 0; t < 1; t++) {
-  //           for (size_t j = 0; j < size; ++j) {
-  //             #ifdef VARVALUE
-  //               auto ret = db->search(data_base[start_pos+j], value);
-  //               #ifndef PERF_TEST
-  //               memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
-  //               if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
-  //                 wrong_get++;
-  //               }
-  //               #endif
-  //             #else
-  //               auto ret = db->search(data_base[start_pos+j], value);
-  //               #ifndef PERF_TEST
-  //               if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
-  //                 wrong_get++;
-  //               }
-  //               #endif
-  //             #endif
-
-  //             if(idx == 0 && (j + 1) % 100000 == 0) {
-  //               std::cerr << "Operate: " << j + 1 << '\r';
-  //             }
-  //           }
-  //         }
-  //         if (wrong_get != 0) {
-  //           std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
-  //         }
-  //       });
-  //     }
-
-  //     for (auto& t : threads)
-  //       t.join();
-
-  //     auto te = TIME_NOW;
-
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_end(&nvdimm_counter_end);
-  //     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-  //     #endif
-
-  //     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  //     std::cout << "[Get]: Get " << GET_SIZE << ": "
-  //               << "cost " << use_seconds << "s, "
-  //               << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
-  //   }
-  // }
-
-  // {
-  //   // Put
-  //   PUT_SIZE = 50000000;
-  //   LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
-  //   std::vector<std::thread> threads;
-  //   std::atomic<uint64_t> thread_idx_count(0);
-  //   size_t per_thread_size = PUT_SIZE / total_thread_num;
-
-  //   #ifdef STATISTIC_PMEM_INFO
-  //   pin_start(&nvdimm_counter_begin);
-  //   #endif
-
-  //   auto ts = TIME_NOW;
-
-  //   for(int i = 0; i < thread_id_arr.size(); i++) {
-  //     threads.emplace_back([&](){
-  //       size_t idx = thread_idx_count.fetch_add(1);
-  //       global_thread_id = thread_id_arr[idx];
-  //       bindCore(global_thread_id);
-  //       size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
-  //       size_t start_pos = idx * per_thread_size + 300000000;
-  //       #ifdef VARVALUE
-  //       std::string value(VALUE_LENGTH, '1');
-  //       #endif
-  //       for (size_t j = 0; j < size; ++j) {
-  //         #ifdef VARVALUE
-  //         #ifndef PERF_TEST
-  //         memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
-  //         #endif
-  //         auto ret = db->insert(data_base[start_pos+j], value);
-  //         #else
-  //         auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-  //         #endif
-  //         // if (ret != 1) {
-  //         //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
-  //         //     assert(0);
-  //         // }
-  //         if(idx == 0 && (j + 1) % 100000 == 0) {
-  //           std::cerr << "Operate: " << j + 1 << '\r';
-  //         }
-  //       }
-  //     });
-  //   }
-
-  //   for (auto& t : threads)
-  //     t.join();
-
-  //   auto te = TIME_NOW;
-
-  //   #ifdef STATISTIC_PMEM_INFO
-  //   pin_end(&nvdimm_counter_end);
-  //   print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-  //   #endif
-
-  //   auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  //   std::cout << "[Put]: Put " << PUT_SIZE << ": "
-  //             << "cost " << use_seconds << "s, "
-  //             << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
-  // }
   delete db;
 #endif
 #endif
