@@ -33,7 +33,7 @@ uint64_t hit_cnt[64];
 bool zipfan_numa_test_flag = false;
 
 #define PERF_TEST
-// #define USE_BULKLOAD
+#define USE_BULKLOAD
 
 // #define ONLY_INSERT
 #define LOAD_PHASE
@@ -45,8 +45,8 @@ bool zipfan_numa_test_flag = false;
 #define ZIPFAN_UPDATE_TEST
 #endif
 // #define MIX_UPDATE_TEST
-#define MIX_INSERT_TEST
-// #define GET_TEST
+// #define MIX_INSERT_TEST
+#define GET_TEST
 // #define UPDATE_TEST
 // #define SCAN_TEST
 // #define DELETE_TEST
@@ -301,9 +301,13 @@ int main(int argc, char *argv[])
     numa1_thread_num = total_thread_num;
     total_thread_num *= 2;
   }
-  if (dbName == "btreeolc" || "viper")
+  if (dbName == "btreeolc" || dbName == "viper")
   {
     BULKLOAD_SIZE = 0;
+  }
+  else if (dbName == "viper_cceh2alexol")
+  {
+    BULKLOAD_SIZE = 10000000;
   }
 #ifdef NAP_OURS_CMP_TEST
   // 使用nap时，不LOAD_PHASE, putsize为16M,zipfan为64M
@@ -481,7 +485,7 @@ int main(int argc, char *argv[])
 #endif
     }
 
-    if (dbName == "alexol" || dbName == "apex")
+    if (dbName == "alexol" || dbName == "apex" || dbName == "viper_cceh2alexol")
     {
       std::sort(values, values + BULKLOAD_SIZE,
                 [&](auto const &a, auto const &b)
@@ -492,7 +496,12 @@ int main(int argc, char *argv[])
     global_thread_id = 0; // thread0 do bulkload
     bindCore(global_thread_id);
     init_dram_space_use = physical_memory_used_by_process();
-    db->bulk_load(values, BULKLOAD_SIZE);
+    // db->bulk_load(values, BULKLOAD_SIZE);
+    auto client = viper_->get_client();
+#ifdef CCEH_2_ALEXOL
+    client.bulk_load(values, BULKLOAD_SIZE);
+#endif
+
     std::cout << "after bulkload: dram space use: " << (physical_memory_used_by_process() - init_dram_space_use) / 1024.0 / 1024.0 << " GB" << std::endl;
     LOG_INFO("@@@@ BULK LOAD END @@@@");
 #ifdef STATISTIC_PMEM_INFO

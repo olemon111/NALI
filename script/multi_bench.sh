@@ -108,6 +108,7 @@ function run_all_zipfan() {
 
 function run_all() {
     dbs="viper"
+    dbs="viper_cceh2alexol"
     repeat=$1
 
     for dbname in $dbs; do
@@ -124,4 +125,4 @@ function run_all() {
     done
 }
 
-run_all 10 
+run_all 10

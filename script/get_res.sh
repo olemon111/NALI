@@ -198,16 +198,19 @@ function get_repeat()
             # get_multi_update $logfile
             # get_multi_delete $logfile
             # get_mix_op $logfile "update"
-            get_mix_op $logfile "insert"
+            # get_mix_op $logfile "insert"
+            # get_multi_load $logfile
+            get_multi_get $logfile
         done
     done
 }
 
 
 
-dbname=viper
+# dbname=viper
+dbname=viper_cceh2alexol
 workload=ycsb-200m
-repeat=20
+repeat=10
 
 get_repeat $repeat > ../res-ycsb.txt
 workload=longlat-200m
