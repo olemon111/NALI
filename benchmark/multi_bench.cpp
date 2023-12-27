@@ -29,7 +29,7 @@ uint64_t hit_cnt[64];
 
 // #define STATISTIC_PMEM_INFO
 
-// #define NAP_OURS_CMP_TEST
+#define NAP_OURS_CMP_TEST
 bool zipfan_numa_test_flag = false;
 
 #define PERF_TEST
@@ -42,7 +42,7 @@ bool zipfan_numa_test_flag = false;
 #ifndef RECOVERY_TEST
 #define ZIPFAN_TEST
 #ifdef ZIPFAN_TEST
-#define ZIPFAN_UPDATE_TEST
+// #define ZIPFAN_UPDATE_TEST
 #endif
 // #define MIX_UPDATE_TEST
 // #define MIX_INSERT_TEST
@@ -86,7 +86,7 @@ size_t PUT_SIZE = 10000000;
 size_t GET_SIZE = 100000000;
 size_t UPDATE_SIZE = 10000000;
 size_t DELETE_SIZE = 10000000;
-size_t ZIPFAN_SIZE = 20000000;
+size_t ZIPFAN_SIZE = 128000000;
 size_t MIX_SIZE = 10000000;
 int Loads_type = 3;
 
@@ -1300,166 +1300,6 @@ int main(int argc, char *argv[])
               << "iops " << (double)(DELETE_SIZE) / use_seconds << " ." << std::endl;
   }
 #endif
-  // #ifdef STATISTIC_PMEM_USE
-  // std::cout << "before gc, nvm space use: " << pmem_alloc_bytes * 1.0 / 1024.0 / 1024.0 / 1024.0 << " GB" << std::endl;
-  // #endif
-  // do_gc
-  // begin_gc = true;
-  // sleep(5);
-
-  // auto ts = TIME_NOW;
-  // for (int i = 1; i < 200 && gc_complete < PER_THREAD_POOL_THREADS; i++) {
-  //   sleep(1);
-  //   #ifdef STATISTIC_PMEM_USE
-  //   std::cout << "gc_gc_gc, nvm space use: " << pmem_alloc_bytes * 1.0 / 1024.0 / 1024.0 / 1024.0 << " GB" << std::endl;
-  //   #endif
-  // }
-  // auto te = TIME_NOW;
-  // auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  // std::cout << "gc_end, use seconds: " << use_seconds << " s" << std::endl;
-
-  // {
-  //   // Get
-  //   GET_SIZE = 10000000;
-  //   Random get_rnd(DELETE_SIZE, LOAD_SIZE+PUT_SIZE+BULKLOAD_SIZE-1);
-  //   for (size_t i = 0; i < GET_SIZE; ++i) {
-  //     size_t idx = get_rnd.Next();
-  //     std::swap(data_base[i], data_base[idx]);
-  //   }
-
-  //   LOG_INFO(" @@@@@@@@@@@@@ get @@@@@@@@@@@@@@@");
-
-  //   for (int loop = 0; loop < 1; loop++) {
-  //     std::vector<std::thread> threads;
-  //     std::atomic<uint64_t> thread_idx_count(0);
-  //     size_t per_thread_size = GET_SIZE / total_thread_num;
-
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_start(&nvdimm_counter_begin);
-  //     #endif
-
-  //     auto ts = TIME_NOW;
-  //     for (int i = 0; i < thread_id_arr.size(); ++i) {
-  //         threads.emplace_back([&](){
-  //         size_t idx = thread_idx_count.fetch_add(1);
-  //         global_thread_id = thread_id_arr[idx];
-  //         bindCore(global_thread_id);
-  //         size_t size = (idx == thread_id_arr.size()-1) ? (GET_SIZE-idx*per_thread_size) : per_thread_size;
-  //         size_t start_pos = idx * per_thread_size;
-
-  //         int wrong_get = 0;
-  //         #ifdef VARVALUE
-  //           std::string value;
-  //           std::string cmp_value(VALUE_LENGTH, '1');
-  //         #else
-  //           size_t value;
-  //         #endif
-  //         for (int t = 0; t < 1; t++) {
-  //           for (size_t j = 0; j < size; ++j) {
-  //             #ifdef VARVALUE
-  //               auto ret = db->search(data_base[start_pos+j], value);
-  //               #ifndef PERF_TEST
-  //               memcpy((char *)cmp_value.c_str(), &data_base[start_pos+j], 8);
-  //               if (!ret || (value != cmp_value && value != std::to_string(0x19990627UL))) {
-  //                 wrong_get++;
-  //               }
-  //               #endif
-  //             #else
-  //               auto ret = db->search(data_base[start_pos+j], value);
-  //               #ifndef PERF_TEST
-  //               if (!ret || (value != data_base[start_pos+j] && value != 0x19990627UL)) {
-  //                 wrong_get++;
-  //               }
-  //               #endif
-  //             #endif
-
-  //             if(idx == 0 && (j + 1) % 100000 == 0) {
-  //               std::cerr << "Operate: " << j + 1 << '\r';
-  //             }
-  //           }
-  //         }
-  //         if (wrong_get != 0) {
-  //           std::cout << "thread " << global_thread_id << ", total get: " << size << ", wrong get: " << wrong_get << std::endl;
-  //         }
-  //       });
-  //     }
-
-  //     for (auto& t : threads)
-  //       t.join();
-
-  //     auto te = TIME_NOW;
-
-  //     #ifdef STATISTIC_PMEM_INFO
-  //     pin_end(&nvdimm_counter_end);
-  //     print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-  //     #endif
-
-  //     auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  //     std::cout << "[Get]: Get " << GET_SIZE << ": "
-  //               << "cost " << use_seconds << "s, "
-  //               << "iops " << (double)(GET_SIZE)/use_seconds << " ." << std::endl;
-  //   }
-  // }
-
-  // {
-  //   // Put
-  //   PUT_SIZE = 50000000;
-  //   LOG_INFO(" @@@@@@@@@@@@@ put @@@@@@@@@@@@@@@");
-  //   std::vector<std::thread> threads;
-  //   std::atomic<uint64_t> thread_idx_count(0);
-  //   size_t per_thread_size = PUT_SIZE / total_thread_num;
-
-  //   #ifdef STATISTIC_PMEM_INFO
-  //   pin_start(&nvdimm_counter_begin);
-  //   #endif
-
-  //   auto ts = TIME_NOW;
-
-  //   for(int i = 0; i < thread_id_arr.size(); i++) {
-  //     threads.emplace_back([&](){
-  //       size_t idx = thread_idx_count.fetch_add(1);
-  //       global_thread_id = thread_id_arr[idx];
-  //       bindCore(global_thread_id);
-  //       size_t size = (idx == thread_id_arr.size()-1) ? (PUT_SIZE - idx*per_thread_size) : per_thread_size;
-  //       size_t start_pos = idx * per_thread_size + 300000000;
-  //       #ifdef VARVALUE
-  //       std::string value(VALUE_LENGTH, '1');
-  //       #endif
-  //       for (size_t j = 0; j < size; ++j) {
-  //         #ifdef VARVALUE
-  //         #ifndef PERF_TEST
-  //         memcpy((char *)value.c_str(), &data_base[start_pos+j], 8);
-  //         #endif
-  //         auto ret = db->insert(data_base[start_pos+j], value);
-  //         #else
-  //         auto ret = db->insert(data_base[start_pos+j], data_base[start_pos+j]);
-  //         #endif
-  //         // if (ret != 1) {
-  //         //     std::cout << "Put error, key: " << data_base[start_pos+j] << ", size: " << j << std::endl;
-  //         //     assert(0);
-  //         // }
-  //         if(idx == 0 && (j + 1) % 100000 == 0) {
-  //           std::cerr << "Operate: " << j + 1 << '\r';
-  //         }
-  //       }
-  //     });
-  //   }
-
-  //   for (auto& t : threads)
-  //     t.join();
-
-  //   auto te = TIME_NOW;
-
-  //   #ifdef STATISTIC_PMEM_INFO
-  //   pin_end(&nvdimm_counter_end);
-  //   print_counter_change(nvdimm_counter_begin, nvdimm_counter_end);
-  //   #endif
-
-  //   auto use_seconds = std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count() * 1.0 / 1000 / 1000;
-  //   std::cout << "[Put]: Put " << PUT_SIZE << ": "
-  //             << "cost " << use_seconds << "s, "
-  //             << "iops " << (double)(PUT_SIZE)/use_seconds << " ." << std::endl;
-  // }
   delete db;
 #endif
 #endif

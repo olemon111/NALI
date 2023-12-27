@@ -158,6 +158,16 @@ function get_nap_update_iops()
     fi
 }
 
+function get_cache_miss_ratio()
+{
+    if cat $1 | grep -q "hit rate"; then
+        cat $1 | grep "hit rate" | awk '{print 1-$3}'
+    else
+        echo "0"
+    fi
+}
+
+
 dbname=nap
 dbname=alexol
 # dbname=btreeolc
@@ -221,18 +231,19 @@ do
     for theta in 0.5 0.6 0.7 0.8 0.9 0.99
     do 
         logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-        get_zipfan_get $logfile "zipfan$theta"
+        # get_zipfan_get $logfile "zipfan$theta"
+        get_cache_miss_ratio $logfile
     done
 done
 
-echo "update"
+# echo "update"
 
-for thread in 16
-# for thread in {1..16}
-do
-    for theta in 0.5 0.6 0.7 0.8 0.9 0.99
-    do 
-        logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
-        get_zipfan_update $logfile "zipfan$theta"
-    done
-done
+# for thread in 16
+# # for thread in {1..16}
+# do
+#     for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+#     do 
+#         logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+#         get_zipfan_update $logfile "zipfan$theta"
+#     done
+# done

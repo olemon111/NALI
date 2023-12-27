@@ -17,7 +17,7 @@
 #include "clht/clht_lb_res.h"
 #include <sys/syscall.h>
 
-// #define USE_CACHE
+#define USE_CACHE
 // #define SCAN_USE_THREAD_POOL
 extern size_t PER_THREAD_POOL_THREADS;
 
