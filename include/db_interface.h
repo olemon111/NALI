@@ -114,6 +114,7 @@ public:
     virtual void bulk_load(const std::pair<size_t, size_t> values[], int num_keys);
     virtual int scan(size_t key, uint32_t to_scan, std::pair<size_t, size_t> *&values_out);
     virtual void print_numa_info(bool is_read);
+    virtual void print_cache_info();
 
 private:
     nali::logdb<size_t, size_t> *li_;
@@ -210,6 +211,11 @@ void nap_nali_wrapper::print_numa_info(bool is_read)
 
     std::cout << "local visit: " << local_visit << std::endl;
     std::cout << "remote visit: " << remote_visit << std::endl;
+}
+
+void nap_nali_wrapper::print_cache_info()
+{
+    tree_->show_statistics();
 }
 
 namespace nali
@@ -640,7 +646,8 @@ namespace nali
 
         void get_info()
         {
-            db_->print_numa_info(true);
+            // db_->print_numa_info(true);
+            db_->print_cache_info();
         }
 
     private:

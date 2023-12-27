@@ -15,14 +15,14 @@ function Run() {
     rm -rf /mnt/pmem1/zzy/*
     Loadname="ycsb-200m"
     loadnum=190000000
-    date | tee multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
+    date | tee multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}-zt${theta}.txt
     # LD_PRELOAD="../build/pmdk/src/PMDK/src/nondebug/libpmemobj.so.1"\
     # numactl --cpunodebind=1 --membind=1 \
     # LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes \
     # gdb --args \
     timeout 1200 ${BUILDDIR}nali_multi_bench --dbname ${dbname} \
         --loadstype 3 --load-size ${loadnum} --valuesize ${valuesize} --put-size ${opnum} --get-size ${opnum} \
-        --thread-nums $thread --bgthreads $bgthreads --hashshards $hashshards | tee -a multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}.txt
+        --thread-nums $thread --bgthreads $bgthreads --hashshards $hashshards --zipfan-theta ${theta} | tee -a multi-${dbname}-${Loadname}-th${thread}-s${valuesize}-b${bgthreads}-h${hashshards}-zt${theta}.txt
     echo "----------------"
     sleep 5
 
@@ -82,48 +82,23 @@ valsize=8
 
 hashshards=128
 
-# alexol var value
-# function run_all() {
-#     dbs="alexol"
-#     for dbname in $dbs; do
-#         for bgthreads in 4 8 12 16
-#         do
-#             for valsize in 8
-#             do
-#                 for thread in 4 8 12 16
-#                 do
-#                     Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards
-#                 done
-#             done
-#         done
-#     done
-# }
-
-
 # alexol var hashshards 
 function run_all() {
     dbs="alexol"
-    # dbs="nap"
-    # dbs="nap-nali"
+    dbs="nap"
+    dbs="nap-nali"
     for dbname in $dbs; do
         for bgthreads in 2 # 4 8 16
         do
             for thread in {1..16}
             do
-                Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards
+                for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+                do
+                    Run $dbname $loadnum $opnum $scansize $thread $valsize $bgthreads $hashshards $theta
+                done
             done
         done
     done
 }
-
-# function run_all() {
-#     dbs="alexol"
-#     for dbname in $dbs; do
-#         for thread in 16
-#         do
-#             Run $dbname $loadnum $opnum $scansize $thread $valsize
-#         done
-#     done
-# }
 
 run_all $dbname $loadnum $opnum $scansize $thread

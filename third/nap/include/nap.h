@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 
+// #define CALCULATE_NAP_HIT_RATIO
+
 namespace nap {
 
 struct alignas(kCachelineSize) ThreadMeta {
@@ -164,7 +166,7 @@ public:
       all_op += thread_meta_array[i].op_seq;
       all_hit += thread_meta_array[i].hit_in_cap;
     }
-    printf("nap hit ratio: %f\n", all_hit * 1.0 / all_op);
+    printf("nap hit ratio: %f, miss ratio: %f\n", all_hit * 1.0 / all_op, 1 - all_hit * 1.0 / all_op);
   }
 };
 
@@ -401,6 +403,9 @@ retry:
     assert(pre_meta->cn_view);
     if (pre_meta->cn_view->get_entry(key, e)) { // in the pre_meta
 
+#ifdef CALCULATE_NAP_HIT_RATIO
+    thread_meta.hit_in_cap++;
+#endif
       res = find_in_views(e, nullptr, key, value);
     } else {
       res = raw_index->get(key, value); // in the raw index

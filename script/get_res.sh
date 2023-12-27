@@ -41,6 +41,15 @@ function get_recovery_time()
     cat $1 | grep "Recovery" | awk '{print $3}'
 }
 
+function get_multi_load()
+{
+    if cat $1 | grep -q "Load" ; then
+        cat $1 | grep "Load" | awk '{print $7/1e+06}'
+    else
+        echo "0"
+    fi
+}
+
 function get_multi_put()
 {
     if cat $1 | grep -q "Put" ; then
@@ -49,6 +58,7 @@ function get_multi_put()
         echo "0"
     fi
 }
+
 function get_multi_get()
 {
     if cat $1 | grep -q "Get" ; then
@@ -87,8 +97,8 @@ function get_multi_update()
 
 function get_mix_op()
 {
-    if cat $1 | grep -q $2 ; then
-        cat $1 | grep -w $2 | awk '{print $7/1e+06}'
+    if cat $1 | grep -q "Mix$2" ; then
+        cat $1 | grep -w "Mix$2" | awk '{print $7/1e+06}'
     else
         echo "0"
     fi
@@ -107,6 +117,15 @@ function get_zipfan_update()
 {
     if cat $1 | grep -q "zipfan_update" ; then
         cat $1 | grep "zipfan_update" | grep -w $2 | awk '{print $7/1e+06}'
+    else
+        echo "0"
+    fi
+}
+
+function get_cache_miss_ratio()
+{
+    if cat $1 | grep -q "cache miss ratio"; then
+        cat $1 | grep "cache miss ratio" | awk '{print $5}'
     else
         echo "0"
     fi
@@ -148,52 +167,56 @@ function get_nap_update_iops()
     fi
 }
 
-# dbname=nap
-dbname=alexol
-# dbname=nap-nali
-workload=ycsb-200m
-# workload=longlat-200m
 # workload=longtitudes-200m
 # workload=lognormal-100m
 
-# logfile="microbench-$dbname-$workload.txt"
+function get_zipfan_repeat()
+{
+    # dbname=$1
+    # workload=$2
+    # repeat=$3
+    
+    # for r in $(seq 1 $repeat)
+    # do
+        echo -e "$r===================="
+        for thread in 1
+        do
+            for theta in 0.5 0.6 0.7 0.8 0.9 0.99
+            do
+                logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta.txt"
+                # get_zipfan_get $logfile "zipfan$theta"
+                # get_zipfan_update $logfile "zipfan$theta"
+                get_cache_miss_ratio $logfile
+            done
+        done
+    # done
+}
 
-for thread in {1..16}
-do
-    logfile="multi-$dbname-$workload-th$thread-s8-b2-h128.txt"
-    # get_numa0_read $logfile
-    # get_numa0_write $logfile
-    # get_multi_put $logfile
-    # get_multi_get $logfile
-    # get_multi_scan $logfile
-    # get_multi_delete $logfile
-    # get_multi_update $logfile
+function get_repeat()
+{
+    repeat=$1
+    theta=0
+    
+    for r in $(seq 1 $repeat)
+    do
+        echo -e "$r===================="
+        for thread in {1..16}
+        # for thread in 16
+        do
+            logfile="multi-$dbname-$workload-th$thread-s8-b2-h128-zt$theta-r$r.txt"
+            # get_multi_update $logfile
+            # get_multi_delete $logfile
+            # get_mix_op $logfile "update"
+            # get_mix_op $logfile "insert"
+            # get_multi_load $logfile
+            # get_multi_get $logfile
+        done
+    done
+}
 
-    # get_mix_op $logfile "Mixupdate0.05"
-    # get_mix_op $logfile "Mixupdate0.2"
-    # get_mix_op $logfile "Mixupdate0.5"
-    # get_mix_op $logfile "Mixupdate0.8"
-    # get_mix_op $logfile "Mixupdate0.95"
 
-    # get_mix_op $logfile "Mixinsert0.05"
-    # get_mix_op $logfile "Mixinsert0.2"
-    # get_mix_op $logfile "Mixinsert0.5"
-    # get_mix_op $logfile "Mixinsert0.8"
-    # get_mix_op $logfile "Mixinsert0.95"
 
-    # get_zipfan_update $logfile "zipfan0.99"
-    # get_zipfan_update $logfile "zipfan0.9"
-    # get_zipfan_update $logfile "zipfan0.8"
-    # get_zipfan_update $logfile "zipfan0.7"
-    # get_zipfan_update $logfile "zipfan0.6"
-    # get_zipfan_update $logfile "zipfan0.5"
-
-    get_zipfan_get $logfile "zipfan0.99"
-    # get_zipfan_get $logfile "zipfan0.9"
-    # get_zipfan_get $logfile "zipfan0.8"
-    # get_zipfan_get $logfile "zipfan0.7"
-    # get_zipfan_get $logfile "zipfan0.6"
-    # get_zipfan_get $logfile "zipfan0.5"
-
-    # get_recovery_time $logfile
-done
+dbname=nap-nali
+workload=ycsb-200m
+repeat=1
+get_zipfan_repeat $repeat

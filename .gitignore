@@ -11,3 +11,4 @@ log
 !/background_test/mlc_test/test.txt
 !/background_test/mlc_test/mlc
 *.out
+perf.data*
